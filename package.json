@@ -1,0 +1,60 @@
+{
+  "name": "craftdock",
+  "productName": "CraftDock",
+  "version": "1.0.0",
+  "description": "Organizzatore e launcher di server Minecraft locali per Windows, con tunnel senza port forwarding, mod, backup e pannello opzioni.",
+  "author": "numbfede",
+  "license": "MIT",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "test": "node test/run.js",
+    "dist": "electron-builder --win nsis portable",
+    "dist:dir": "electron-builder --win dir",
+    "predist": "node scripts/inject-cf-key.js",
+    "predist:dir": "node scripts/inject-cf-key.js"
+  },
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "pidusage": "^4.0.1",
+    "yauzl": "^3.2.0"
+  },
+  "devDependencies": {
+    "electron": "^44.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.numbfede.craftdock",
+    "productName": "CraftDock",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "CraftDock"
+    },
+    "portable": {
+      "artifactName": "CraftDock-${version}-portable.exe"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/numbfede/CraftDock.git"
+  },
+  "homepage": "https://craftdock.numbfede.com"
+}
