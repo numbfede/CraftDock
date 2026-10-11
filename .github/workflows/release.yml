@@ -1,0 +1,42 @@
+# Crea installer e versione portatile per Windows e li pubblica nella pagina Releases.
+# Parte quando si fa push di un tag tipo v1.0.0 (o a mano da Actions → Release → Run workflow).
+# La chiave CurseForge, se presente, arriva dal secret CF_API_KEY e non finisce mai nel codice.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm test
+
+      - name: Build installer e portatile
+        run: npm run dist
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Pubblica la release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.exe
+            dist/*.exe.blockmap
+          generate_release_notes: true
+          fail_on_unmatched_files: true

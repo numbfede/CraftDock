@@ -46,11 +46,13 @@
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "CraftDock"
+      "shortcutName": "CraftDock",
+      "artifactName": "CraftDock-Setup-${version}.exe"
     },
     "portable": {
       "artifactName": "CraftDock-${version}-portable.exe"
-    }
+    },
+    "publish": null
   },
   "repository": {
     "type": "git",
