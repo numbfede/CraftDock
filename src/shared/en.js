@@ -1057,6 +1057,13 @@
     "Controlla di nuovo": "Check again",
   });
 
+  // ---------- aternos ----------
+  add({
+    "Va bene anche una cartella scaricata da Aternos o da un altro hosting senza il .jar: CraftDock scarica il server che manca.": "A folder downloaded from Aternos or another host without the .jar works too: CraftDock downloads the missing server.",
+    "Manca il file del server (.jar).": "The server file (.jar) is missing.",
+    "Succede con i file scaricati da Aternos e da molti hosting: danno mondo, mod e impostazioni ma non il programma del server. Scegli tipo e versione (CraftDock li ha già indovinati dai tuoi file) e lo scarico io; il resto della cartella non viene toccato.": "This happens with files downloaded from Aternos and many hosts: you get the world, mods and settings but not the server program. Pick the type and version (CraftDock already guessed them from your files) and it downloads it; the rest of the folder isn't touched.",
+  });
+
   // @@END
 
   if (typeof module !== 'undefined' && module.exports) module.exports = EN;

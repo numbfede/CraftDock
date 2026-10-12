@@ -339,11 +339,65 @@ async function detectServer(dir) {
     const n = launch.argsFile.match(/neoforge\/([^/]+)\//);
     if (n) mcVersion = neoToMc(n[1]);
   }
-  return { type, mcVersion, launch };
+  if (launch) return { type, mcVersion, launch };
+  // Nessun file di avvio: tipico dei file scaricati da Aternos e da altri hosting, che non danno il .jar
+  // del server. Capisco tipo e versione da mod/plugin e dal mondo, poi CraftDock scarica il server.
+  const guess = await guessFromContent(dir);
+  return { type: guess.type || type, mcVersion: mcVersion || guess.mcVersion, launch: null, missingJar: true, guessedFrom: guess.from };
+}
+
+/** Indovina loader e versione di una cartella senza .jar del server (mod, plugin, level.dat). */
+async function guessFromContent(dir) {
+  const out = { type: null, mcVersion: null, from: [] };
+  const jarsIn = async (sub) => (await fsp.readdir(path.join(dir, sub)).catch(() => [])).filter((f) => /\.jar$/i.test(f));
+  const modJars = await jarsIn('mods');
+  if (modJars.length) {
+    const votes = { fabric: 0, quilt: 0, neoforge: 0, forge: 0 };
+    for (const f of modJars.slice(0, 40)) {
+      const entries = await zip.listEntries(path.join(dir, 'mods', f)).catch(() => []);
+      if (entries.includes('quilt.mod.json')) votes.quilt++;
+      else if (entries.includes('fabric.mod.json')) votes.fabric++;
+      if (entries.includes('META-INF/neoforge.mods.toml')) votes.neoforge++;
+      else if (entries.includes('META-INF/mods.toml')) votes.forge++;
+    }
+    const best = Object.entries(votes).sort((a, b) => b[1] - a[1])[0];
+    if (best[1] > 0) { out.type = best[0]; out.from.push('mods'); }
+    // versione dalle dipendenze delle mod Fabric (es. "minecraft": "~1.21.1")
+    if (out.type === 'fabric' || out.type === 'quilt') {
+      for (const f of modJars.slice(0, 40)) {
+        const buf = await zip.readEntry(path.join(dir, 'mods', f), 'fabric.mod.json').catch(() => null);
+        if (!buf) continue;
+        try {
+          const dep = (JSON.parse(buf.toString('utf8')).depends || {}).minecraft;
+          const m = String(Array.isArray(dep) ? dep[0] : dep || '').match(/(\d+\.\d+(?:\.\d+)?)/);
+          if (m && !/[<>]/.test(String(dep))) { out.mcVersion = m[1]; out.from.push('fabric.mod.json'); break; }
+        } catch (_) {}
+      }
+    }
+  } else if ((await jarsIn('plugins')).length) {
+    out.type = 'paper';
+    out.from.push('plugins');
+  }
+  // versione dal mondo (level.dat), più affidabile di quella delle mod
+  try {
+    const props = (await fsp.readFile(path.join(dir, 'server.properties'), 'utf8').catch(() => '')).match(/^level-name=(.*)$/m);
+    const level = (props && props[1].trim()) || 'world';
+    const { readLevelInfo } = require('./nbt');
+    const zlib = require('zlib');
+    const raw = await fsp.readFile(path.join(dir, level, 'level.dat'));
+    const info = readLevelInfo(zlib.gunzipSync(raw));
+    if (info.version) { out.mcVersion = info.version; out.from.push('level.dat'); }
+    if (!out.type && info.modded && info.modded.length) {
+      const b = info.modded.join(' ').toLowerCase();
+      out.type = ['neoforge', 'forge', 'quilt', 'fabric', 'purpur', 'paper'].find((x) => b.includes(x)) || null;
+      if (out.type) out.from.push('level.dat');
+    }
+  } catch (_) {}
+  return out;
 }
 
 module.exports = {
   TYPES, MODRINTH_LOADER, CURSE_LOADER,
-  listGameVersions, listLoaderVersions, requiredJava, install, detectLaunch, detectServer,
+  listGameVersions, listLoaderVersions, requiredJava, install, detectLaunch, detectServer, guessFromContent,
   neoToMc, mcToNeoPrefix, parseMavenVersions,
 };

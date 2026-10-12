@@ -116,6 +116,24 @@ test('aggiornamenti: legge l\'ultima release e capisce se è più nuova', async 
   }
 });
 
+test('cartella senza jar (file di Aternos): tipo e versione dai file', async () => {
+  const dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'cd-aternos-'));
+  await fsp.mkdir(path.join(dir, 'mods'), { recursive: true });
+  await fsp.mkdir(path.join(dir, 'world'), { recursive: true });
+  await fsp.writeFile(path.join(dir, 'server.properties'), 'level-name=world\nserver-port=25565\n');
+  await fsp.writeFile(path.join(dir, 'world', 'level.dat'), makeLevelDat('Mondo Aternos', '1.21.1'));
+  const src = path.join(dir, 'fabric.mod.json');
+  await fsp.writeFile(src, JSON.stringify({ id: 'sodium', depends: { minecraft: '~1.21.1' } }));
+  await zip.createZip(path.join(dir, 'mods', 'sodium.jar'), [{ path: src, name: 'fabric.mod.json' }]);
+  await fsp.rm(src);
+  const d = await loaders.detectServer(dir);
+  assert.strictEqual(d.launch, null);
+  assert.strictEqual(d.missingJar, true);
+  assert.strictEqual(d.type, 'fabric');
+  assert.strictEqual(d.mcVersion, '1.21.1');
+  await fsp.rm(dir, { recursive: true, force: true });
+});
+
 test('compareVersions gestisce il nuovo schema 26.x', () => {
   assert.strictEqual(util.compareVersions('1.21.11', '26.1'), -1);
   assert.strictEqual(util.compareVersions('26.1.1', '26.1'), 1);

@@ -141,9 +141,10 @@ async function createServer(opts) {
   return serverView(store.get(server.id));
 }
 
-async function importServerFolder({ dir, name, copy }) {
+async function importServerFolder({ dir, name, copy, install }) {
   const detected = await loaders.detectServer(dir);
-  if (!detected.launch) throw new Error(t('Non trovo il jar del server in questa cartella'));
+  // senza .jar (file di Aternos e simili) serve sapere cosa installare
+  if (!detected.launch && !(install && install.type && install.mcVersion)) throw new Error(t('Non trovo il jar del server in questa cartella'));
   let target = dir;
   if (copy) {
     target = await uniqueDir(name || path.basename(dir));
@@ -156,7 +157,20 @@ async function importServerFolder({ dir, name, copy }) {
     javaMajor: detected.mcVersion ? await loaders.requiredJava(detected.mcVersion) : 21, imported: true,
   });
   send('servers:changed');
-  return serverView(s);
+  if (!detected.launch) {
+    // scarica il software del server nella cartella, lasciando mondo, mod e configurazioni dove sono
+    const next = Object.assign({}, s, { type: install.type, mcVersion: install.mcVersion, loaderVersion: install.loaderVersion || null });
+    servers.setStatus(s.id, 'installing');
+    try {
+      const res = await withTask(t('Installo {name}', { name: s.name }), (progress) => loaders.install(next, { java, onProgress: progress, onLog: (l) => servers.pushLog(s.id, l, 'install') }));
+      await store.update(s.id, Object.assign({ type: next.type, mcVersion: next.mcVersion }, res));
+      servers.info(s.id, t('Installazione completata. Premi Avvia!'));
+    } finally {
+      servers.setStatus(s.id, 'stopped');
+      send('servers:changed');
+    }
+  }
+  return serverView(store.get(s.id));
 }
 
 async function createFromPack(packFile, info, opts) {

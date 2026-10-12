@@ -278,7 +278,10 @@ function drawImport(m) {
   const info = h('div');
   const name = h('input.input');
   const copy = h('input', { type: 'checkbox', checked: true });
-  m.body.appendChild(h('.info-note', icon('info'), h('div', t('Seleziona la cartella di un server già esistente (con il suo .jar, i mondi e le configurazioni). CraftDock riconosce automaticamente Vanilla, Fabric, Quilt, Forge, NeoForge, Paper e Purpur.'))));
+  let picker = null;
+  let missingJar = false;
+  m.body.appendChild(h('.info-note', icon('info'), h('div', t('Seleziona la cartella di un server già esistente (con il suo .jar, i mondi e le configurazioni). CraftDock riconosce automaticamente Vanilla, Fabric, Quilt, Forge, NeoForge, Paper e Purpur.'), ' ',
+    t('Va bene anche una cartella scaricata da Aternos o da un altro hosting senza il .jar: CraftDock scarica il server che manca.'))));
   m.body.appendChild(btn(t('Scegli cartella del server…'), { cls: 'blue', icon: 'folder', onclick: async () => {
     dir = await run(() => api('dialog:openFolder', t('Cartella del server')));
     if (!dir) return;
@@ -286,19 +289,28 @@ function drawImport(m) {
     if (!d) return;
     name.value = dir.split(/[\\/]/).pop();
     info.innerHTML = '';
+    missingJar = !d.launch;
+    picker = missingJar ? versionPicker({ type: d.type, mcVersion: d.mcVersion }) : null;
     info.appendChild(h('.card', { style: { marginTop: '14px' } },
       h('.row', h('span.tag.blue', App.info.types[d.type].name), d.mcVersion ? h('span.tag', 'Minecraft ' + d.mcVersion) : h('span.tag.yellow', t('versione non rilevata')),
         d.launch ? h('span.tag.green', t('avvio: {what}', { what: d.launch.jar || 'args file' })) : h('span.tag.red', t('jar non trovato'))),
       h('.spacer'),
       h('.field', h('label', t('Nome')), name),
       h('.spacer'),
-      h('label.check', copy, h('span', t("Copia la cartella dentro CraftDock (consigliato: l'originale resta intatto)")))));
+      h('label.check', copy, h('span', t("Copia la cartella dentro CraftDock (consigliato: l'originale resta intatto)"))),
+      missingJar ? h('div', h('.spacer'),
+        h('.locked-note', icon('alert'), h('div',
+          h('strong', t('Manca il file del server (.jar).')), ' ',
+          t('Succede con i file scaricati da Aternos e da molti hosting: danno mondo, mod e impostazioni ma non il programma del server. Scegli tipo e versione (CraftDock li ha già indovinati dai tuoi file) e lo scarico io; il resto della cartella non viene toccato.'))),
+        picker) : null));
   } }));
   m.body.appendChild(info);
   m.foot.append(btn(t('Annulla'), { onclick: m.close }), btn(t('Importa'), { cls: 'primary', icon: 'check', onclick: async () => {
     if (!dir) return toast(t('Scegli prima una cartella'), 'warn');
+    const install = missingJar && picker ? picker.getState() : null;
+    if (missingJar && (!install || !install.mcVersion)) return toast(t('Scegli una versione di Minecraft'), 'warn');
     m.close();
-    const s = await run(() => api('servers:importFolder', { dir, name: name.value.trim(), copy: copy.checked }));
+    const s = await run(() => api('servers:importFolder', { dir, name: name.value.trim(), copy: copy.checked, install }));
     if (s) { await refreshServers(); selectServer(s.id); toast(t('Server importato'), 'ok'); }
   } }));
 }
