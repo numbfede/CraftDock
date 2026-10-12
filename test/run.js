@@ -89,6 +89,16 @@ test('splitArgs e flag Aikar', () => {
   assert.deepStrictEqual(splitArgs('-Dfoo=1 "-Dbar=a b" -XX:+X'), ['-Dfoo=1', '-Dbar=a b', '-XX:+X']);
   assert.ok(aikarFlags(4096).includes('-XX:G1HeapRegionSize=8M'));
   assert.ok(aikarFlags(16384).includes('-XX:G1HeapRegionSize=16M'));
+  assert.ok(aikarFlags(4096).includes('-XX:G1RSetUpdatingPauseTimePercent=5'));
+  assert.strictEqual(aikarFlags(4096)[0], '-XX:+IgnoreUnrecognizedVMOptions');
+  // ogni flag deve essere accettato da una JVM reale (se Java è installato)
+  try {
+    const { execFileSync } = require('child_process');
+    const env = Object.assign({}, process.env); delete env.JAVA_TOOL_OPTIONS;
+    execFileSync('java', [...aikarFlags(4096).slice(1), '-Xmx256M', '-version'], { stdio: 'pipe', env });
+  } catch (e) {
+    if (e.code !== 'ENOENT') throw new Error('Flag JVM non validi: ' + String(e.stderr || e.message).split('\n')[0]);
+  }
 });
 
 test('regex tunnel playit', () => {

@@ -18,13 +18,15 @@ const MAX_LOG = 3000;
 function aikarFlags(ramMb) {
   const big = ramMb >= 12288;
   return [
+    // Se una futura versione di Java elimina uno di questi flag, la JVM lo ignora invece di non partire.
+    '-XX:+IgnoreUnrecognizedVMOptions',
     '-XX:+UseG1GC', '-XX:+ParallelRefProcEnabled', '-XX:MaxGCPauseMillis=200',
     '-XX:+UnlockExperimentalVMOptions', '-XX:+DisableExplicitGC', '-XX:+AlwaysPreTouch',
     `-XX:G1NewSizePercent=${big ? 40 : 30}`, `-XX:G1MaxNewSizePercent=${big ? 50 : 40}`,
     `-XX:G1HeapRegionSize=${big ? '16M' : '8M'}`, `-XX:G1ReservePercent=${big ? 15 : 20}`,
     '-XX:G1HeapWastePercent=5', '-XX:G1MixedGCCountTarget=4',
     `-XX:InitiatingHeapOccupancyPercent=${big ? 20 : 15}`, '-XX:G1MixedGCLiveThresholdPercent=90',
-    '-XX:G1RSetUpdatingPauseIntervalPercent=5', '-XX:SurvivorRatio=32', '-XX:+PerfDisableSharedMem',
+    '-XX:G1RSetUpdatingPauseTimePercent=5', '-XX:SurvivorRatio=32', '-XX:+PerfDisableSharedMem',
     '-XX:MaxTenuringThreshold=1', '-Dusing.aikars.flags=https://mcflags.emc.gs', '-Daikars.new.flags=true',
   ];
 }
@@ -205,7 +207,11 @@ class ServerManager extends EventEmitter {
       throw e;
     }
     this.info(id, `Avvio: ${path.basename(cmd.javaPath)} ${cmd.args.filter((a) => !a.startsWith('-XX')).join(' ')}`);
-    const proc = spawn(cmd.javaPath, cmd.args, { cwd: server.dir, windowsHide: true, env: Object.assign({}, process.env, { JAVA_TOOL_OPTIONS: '' }) });
+    // JAVA_TOOL_OPTIONS impostato da altri programmi può cambiare il comportamento della JVM: lo togliamo.
+    const env = Object.assign({}, process.env);
+    delete env.JAVA_TOOL_OPTIONS;
+    delete env._JAVA_OPTIONS;
+    const proc = spawn(cmd.javaPath, cmd.args, { cwd: server.dir, windowsHide: true, env });
     r.proc = proc;
     r.startedAt = Date.now();
     this.emit('players', id, []);
