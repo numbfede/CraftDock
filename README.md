@@ -5,7 +5,7 @@ I tuoi amici entrano **senza port forwarding** grazie al tunnel playit.gg integr
 
 🌐 Sito: **https://craftdock.numbfede.com**
 
-![CraftDock — panoramica di un server](docs/screenshots/panoramica.png)
+![CraftDock, panoramica di un server](docs/screenshots/panoramica.png)
 
 ## Avvio rapido
 

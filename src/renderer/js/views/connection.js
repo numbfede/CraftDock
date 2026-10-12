@@ -9,7 +9,7 @@ const CLAIM_TEXT = {
 };
 
 function renderConnection(main) {
-  const page = h('.page', h('h1.page-title.green', 'Connessione amici'));
+  const page = h('.page', h('header.page-head', h('span.eyebrow', h('span.eyebrow-dot'), 'Senza port forwarding'), h('h1.page-title', 'Connessione amici'), h('p.page-lede', 'Un tunnel playit.gg gratuito dà a ogni server un indirizzo pubblico. Il router non si tocca.')));
   page.appendChild(h('p.muted', { style: { marginTop: '-8px', maxWidth: '820px' } },
     'Il router di casa blocca le connessioni in entrata, per questo di solito serve il port forwarding. Con il tunnel di playit.gg è il tuo PC a collegarsi verso l\'esterno e gli amici entrano da lì: niente configurazione del router, il tuo IP resta nascosto.'));
 

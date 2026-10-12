@@ -519,8 +519,10 @@ function wireEvents() {
 function createWindow() {
   win = new BrowserWindow({
     width: 1360, height: 860, minWidth: 1040, minHeight: 680,
-    backgroundColor: '#0f1418', title: 'CraftDock', icon: ICON, show: false,
+    backgroundColor: '#0c0b09', title: 'CraftDock', icon: ICON, show: false,
     autoHideMenuBar: true,
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#0c0b09', symbolColor: '#f3efe7', height: 40 },
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false },
   });
   win.once('ready-to-show', () => win.show());

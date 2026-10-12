@@ -68,7 +68,7 @@ function renderControls(body, s) {
     r.addEventListener('input', () => { out.textContent = r.value; });
     r.addEventListener('change', async () => {
       await persist({ [key]: r.value });
-      toast(`${label}: ${r.value} chunk${isUp(s) ? ' — si applica al prossimo riavvio' : ''}`, 'ok');
+      toast(`${label}: ${r.value} chunk${isUp(s) ? ', si applica al prossimo riavvio' : ''}`, 'ok');
     });
     return h('.field', h('label', label + ': ', out, ' chunk'), r);
   };

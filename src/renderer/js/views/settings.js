@@ -3,7 +3,7 @@
 
 function renderAppSettings(main) {
   const cfg = App.info.config;
-  const page = h('.page', h('h1.page-title', 'Impostazioni'));
+  const page = h('.page', h('header.page-head', h('span.eyebrow', h('span.eyebrow-dot'), 'CraftDock ' + App.info.version), h('h1.page-title', 'Impostazioni'), h('p.page-lede', 'Cartelle, avvio, Java e cataloghi di mod. Valgono per tutti i server.')));
   const root = h('input.input', { value: cfg.root, readonly: true });
   const ram = ramField(cfg.defaultRamMb);
   const tray = h('input', { type: 'checkbox', checked: cfg.closeToTray });

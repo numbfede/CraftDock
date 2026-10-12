@@ -27,34 +27,53 @@ function renderMain() {
 }
 
 function renderHome(main) {
-  const page = h('.page');
+  const page = h('.page.home');
+  const has = App.servers.length > 0;
   const features = [
-    ['globe', 'Niente port forwarding', 'Tunnel playit.gg integrato: i tuoi amici entrano con un indirizzo pubblico.'],
-    ['puzzle', 'Mod in un clic', 'Cerca e installa da Modrinth e CurseForge con le dipendenze.'],
-    ['box', 'Tutti i loader', 'Fabric, Quilt, Forge, NeoForge, Paper, Purpur e Vanilla.'],
-    ['map', 'Importa mondi', 'Dal Minecraft Launcher, CurseForge, Modrinth App, Prism o zip.'],
-    ['archive', 'Backup locali', 'Manuali, automatici e allo spegnimento, con ripristino sicuro.'],
-    ['sliders', 'Pannello opzioni', 'server.properties, game rule e comandi rapidi senza scrivere nulla.'],
+    ['globe', 'Niente port forwarding', 'Tunnel playit.gg integrato. I tuoi amici entrano con un indirizzo pubblico, il router resta com\'è.', 'big'],
+    ['puzzle', 'Mod in un clic', 'Cerca su Modrinth, installa con le dipendenze.'],
+    ['box', 'Tutti i loader', 'Fabric, Quilt, Forge, NeoForge, Paper, Purpur, Vanilla.'],
+    ['map', 'Importa mondi', 'Dal Minecraft Launcher, da Prism, CurseForge, Modrinth App o da uno zip.', 'wide'],
+    ['archive', 'Backup locali', 'Manuali, automatici e allo spegnimento, con ripristino sicuro.', 'wide'],
+    ['sliders', 'Pannello opzioni', 'Proprietà, game rule e comandi rapidi senza scrivere nulla.', 'wide'],
   ];
-  page.appendChild(h('.welcome',
-    h('img.grass', { src: 'assets/icon.png' }),
-    h('h1', App.servers.length ? 'Bentornato!' : 'Il tuo hosting Minecraft, sul tuo PC'),
-    h('p', App.servers.length ? 'Seleziona un server a sinistra oppure creane uno nuovo.' : 'Crea un server in pochi secondi, aggiungi le mod che vuoi e invita gli amici senza toccare il router.'),
-    h('.row', { style: { justifyContent: 'center', marginTop: '18px' } },
-      btn('Crea un server', { cls: 'primary lg', icon: 'plus', onclick: () => openWizard('new') }),
+  const running = App.servers.filter(isUp).length;
+
+  const intro = h('.home-intro',
+    h('span.eyebrow', h('span.eyebrow-dot'), has ? (running ? `${running} ${running === 1 ? 'server acceso' : 'server accesi'}` : 'Tutto spento') : 'Hosting locale'),
+    h('h1.home-title', has ? 'Bentornato.' : 'Il tuo server Minecraft,', has ? null : h('br'), has ? null : h('span.soft', 'sul tuo PC.')),
+    h('p.home-lede', has ? 'Scegli un server dalla lista o creane uno nuovo. Mod, mondi e backup restano tutti in locale.' : 'Crea un server in pochi secondi, aggiungi le mod che vuoi e invita gli amici senza toccare il router.'),
+    h('.home-actions',
+      btn('Crea un server', { cls: 'primary lg', island: 'plus', onclick: () => openWizard('new') }),
       btn('Da modpack', { cls: 'lg', icon: 'package', onclick: () => openWizard('pack') }),
-      btn('Importa cartella', { cls: 'lg', icon: 'folder', onclick: () => openWizard('import') })),
-    h('.feature-grid', features.map(([ic, t, d]) => h('.feature', icon(ic), h('.ft', t), h('.fd', d))))));
-  if (App.servers.length) {
-    const grid = h('.cards-grid', { style: { maxWidth: '860px', margin: '0 auto' } });
-    for (const s of App.servers) {
-      const st = serverStatus(s);
-      grid.appendChild(h('.card', { style: { cursor: 'pointer' }, onclick: () => selectServer(s.id) },
-        h('.row', h('span.dot.' + st), h('strong', s.name), h('span.grow'), h('span.status-pill.' + st, STATUS_LABEL[st])),
-        h('.small.muted', { style: { marginTop: '6px' } }, `${s.typeName} ${s.mcVersion || ''} · porta ${s.port}`)));
-    }
-    page.appendChild(grid);
+      btn('Importa cartella', { cls: 'lg ghost', icon: 'folder', onclick: () => openWizard('import') })));
+
+  let aside;
+  if (has) {
+    aside = h('.home-aside', h('.aside-head', h('span', 'I tuoi server'), h('span.muted', String(App.servers.length))),
+      h('.home-servers', App.servers.slice(0, 6).map((s) => {
+        const st = serverStatus(s);
+        const ic = h('.hs-icon', typeGlyph(s.type));
+        loadServerIcon(s.id).then((d) => { if (d) { ic.innerHTML = ''; ic.appendChild(h('img', { src: d })); } });
+        return h('button.home-server', { type: 'button', onclick: () => selectServer(s.id) },
+          ic,
+          h('.hs-main', h('.hs-name', s.name), h('.hs-sub', `${s.typeName} ${s.mcVersion || ''} · porta ${s.port}`)),
+          h('span.status-pill.' + st, h('span.dot.' + st), STATUS_LABEL[st]),
+          h('span.hs-go', icon('arrowRight')));
+      })));
+  } else {
+    const steps = [
+      ['Scegli il loader', 'Fabric, Forge, Paper e gli altri. Java arriva da solo.'],
+      ['Aggiungi le mod', 'Dal catalogo Modrinth o trascinando i .jar.'],
+      ['Condividi l\'indirizzo', 'Un clic crea il tunnel pubblico per gli amici.'],
+    ];
+    aside = h('.home-aside', h('.aside-head', h('span', 'Come funziona'), h('span.muted', '3 passi')),
+      h('ol.home-steps', steps.map(([t, d], i) => h('li', h('span.step-n', String(i + 1).padStart(2, '0')), h('div', h('.st-t', t), h('.st-d', d))))));
   }
+
+  page.appendChild(h('.home-split', intro, aside));
+  page.appendChild(h('.bento', features.map(([ic, t, d, size], i) => h('.feature' + (size ? '.' + size : ''), { style: { '--i': i } },
+    h('span.feature-ic', icon(ic)), h('.ft', t), h('.fd', d)))));
   main.appendChild(page);
 }
 
@@ -84,17 +103,17 @@ function renderHero(s) {
   api('props:get', s.id).then((p) => { App.props.set(s.id, p); motd.appendChild(mcText(p.motd || 'A Minecraft Server')); }).catch(() => {});
   const actions = h('.hero-actions');
   if (st === 'stopped' || st === 'crashed' || st === 'error') {
-    actions.appendChild(btn('Avvia', { cls: 'primary start-big', icon: 'play', disabled: st === 'error' && !s.launch, onclick: () => startServer(s) }));
+    actions.appendChild(btn('Avvia', { cls: 'primary start-big', island: 'play', disabled: st === 'error' && !s.launch, onclick: () => startServer(s) }));
   } else if (st === 'installing') {
     actions.appendChild(btn('Installazione…', { cls: 'start-big', disabled: true }));
   } else {
     actions.appendChild(btn('Riavvia', { icon: 'restart', disabled: st !== 'running', onclick: () => run(() => api('servers:restart', s.id)) }));
-    actions.appendChild(btn(st === 'stopping' ? 'Arresto…' : 'Ferma', { cls: 'danger start-big', icon: 'stop', disabled: st === 'stopping', onclick: () => run(() => api('servers:stop', s.id)) }));
+    actions.appendChild(btn(st === 'stopping' ? 'Arresto…' : 'Ferma', { cls: 'danger start-big', island: 'stop', disabled: st === 'stopping', onclick: () => run(() => api('servers:stop', s.id)) }));
     actions.appendChild(btn('', { cls: 'ghost icon', icon: 'skull', title: 'Chiusura forzata (può perdere dati non salvati)', onclick: async () => {
       if (await confirmBox('Chiusura forzata', 'Il server verrà terminato subito senza salvare. Usalo solo se non risponde.', { okLabel: 'Termina', danger: true })) run(() => api('servers:kill', s.id));
     } }));
   }
-  return h('.server-hero', iconBox,
+  return h('.server-hero.st-' + st, iconBox,
     h('.hero-text',
       h('.hero-name', s.name, h('span.status-pill.' + st, h('span.dot.' + st), STATUS_LABEL[st])),
       motd,
@@ -151,10 +170,10 @@ function renderOverview(body, s) {
   const props = App.props.get(s.id) || {};
   const maxPlayers = props['max-players'] || '?';
   const statusV = h('.v', STATUS_LABEL[serverStatus(s)]);
-  const uptime = h('.small.muted', st.startedAt && isUp(s) ? 'da ' + fmtDuration(Date.now() - st.startedAt) : '—');
+  const uptime = h('.small.muted', st.startedAt && isUp(s) ? 'da ' + fmtDuration(Date.now() - st.startedAt) : '–');
   const playersV = h('.v', `${(st.players || []).length} / ${maxPlayers}`);
-  const cpuV = h('.v', st.stats ? st.stats.cpu + '%' : '—');
-  const ramV = h('.v', st.stats ? fmtBytes(st.stats.memMb * 1048576) : '—');
+  const cpuV = h('.v', st.stats ? st.stats.cpu + '%' : '–');
+  const ramV = h('.v', st.stats ? fmtBytes(st.stats.memMb * 1048576) : '–');
   const cpuC = h('canvas'); const ramC = h('canvas');
   body.appendChild(h('.stats-row',
     h('.stat', h('.k', 'Stato'), statusV, uptime),
@@ -163,7 +182,7 @@ function renderOverview(body, s) {
     h('.stat', h('.k', 'RAM usata'), ramV, ramC)));
   const drawCharts = () => {
     const hist = (currentServer().state || {}).statsHistory || [];
-    sparkline(cpuC, hist.map((x) => x.cpu), { color: '#3b9be8', max: 100 });
+    sparkline(cpuC, hist.map((x) => x.cpu), { color: '#d9d2c3', max: 100 });
     sparkline(ramC, hist.map((x) => x.memMb), { color: '#5bd16f', max: s.ramMb * 1.15 });
   };
   requestAnimationFrame(drawCharts);
@@ -271,7 +290,7 @@ function renderServerSettings(body, s) {
   const onStop = h('input', { type: 'checkbox', checked: s.backupOnStop });
   const javaSel = h('select.input', h('option', { value: '' }, `Automatico (Java ${s.javaMajor || '?'}, scaricato se manca)`));
   api('java:list').then((list) => {
-    list.forEach((j) => javaSel.appendChild(h('option', { value: j.path, selected: j.path === s.javaPath }, `Java ${j.version}${j.managed ? ' · CraftDock' : ''} — ${j.path}`)));
+    list.forEach((j) => javaSel.appendChild(h('option', { value: j.path, selected: j.path === s.javaPath }, `Java ${j.version}${j.managed ? ' · CraftDock' : ''} · ${j.path}`)));
   }).catch(() => {});
 
   const save = btn('Salva impostazioni', { cls: 'primary', icon: 'check', onclick: async () => {

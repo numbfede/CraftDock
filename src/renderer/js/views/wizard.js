@@ -93,7 +93,7 @@ function versionPicker({ type = 'fabric', mcVersion, loaderVersion, allowTypeCha
     javaHint.textContent = '';
     if (!state.mcVersion) return;
     const j = await api('versions:java', state.mcVersion).catch(() => null);
-    if (j) javaHint.textContent = `Richiede Java ${j} — verrà scaricato automaticamente se manca.`;
+    if (j) javaHint.textContent = `Richiede Java ${j}, verrà scaricato automaticamente se manca.`;
   };
 
   const emit = () => onChange && onChange(Object.assign({}, state));
@@ -229,10 +229,10 @@ function drawPack(m) {
       const verSel = h('select.input');
       if (p.source === 'modrinth') {
         const versions = await api('mr:versions', p.id);
-        versions.forEach((v) => verSel.appendChild(h('option', { value: v.id }, `${v.version_number} — MC ${v.game_versions.join(', ')} · ${v.loaders.join('/')}`)));
+        versions.forEach((v) => verSel.appendChild(h('option', { value: v.id }, `${v.version_number} · MC ${v.game_versions.join(', ')} · ${v.loaders.join('/')}`)));
       } else {
         const files = await api('cf:files', p.id);
-        files.forEach((f) => verSel.appendChild(h('option', { value: f.id }, `${f.displayName} — ${f.gameVersions.join(', ')}`)));
+        files.forEach((f) => verSel.appendChild(h('option', { value: f.id }, `${f.displayName} · ${f.gameVersions.join(', ')}`)));
       }
       selected = { source: p.source, id: p.id, title: p.title, verSel };
       detail.innerHTML = '';

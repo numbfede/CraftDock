@@ -44,7 +44,7 @@ function renderConsoleTab(body, s) {
     btn('Log', { cls: 'sm ghost', icon: 'folder', onclick: () => run(() => api('servers:openFolder', s.id, 'logs')) }));
 
   // Input con suggerimenti
-  const input = h('input', { placeholder: up ? 'Scrivi un comando (senza /) — Tab per completare, ↑↓ cronologia' : 'Avvia il server per inviare comandi', disabled: !up, spellcheck: 'false' });
+  const input = h('input', { placeholder: up ? 'Scrivi un comando (senza /) · Tab per completare, ↑↓ cronologia' : 'Avvia il server per inviare comandi', disabled: !up, spellcheck: 'false' });
   const suggest = h('.suggest.hidden');
   let sugItems = []; let sugIdx = 0;
   const hist = cmdHistory.get(s.id) || [];

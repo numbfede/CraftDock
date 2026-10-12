@@ -36,8 +36,8 @@ function motdEditor(value, onChange) {
   const colors = '0123456789abcdef'.split('');
   const palette = h('.color-row',
     colors.map((c) => h('button', { type: 'button', title: '§' + c, class: 'mc-' + c, style: { background: 'currentColor' }, onclick: () => insert(c) })),
-    [['l', 'B'], ['o', 'I'], ['n', 'U'], ['m', 'S'], ['k', '?'], ['r', '↺']].map(([c, l]) => h('button', { type: 'button', title: '§' + c, style: { background: '#262f36', color: '#fff' }, onclick: () => insert(c) }, l)),
-    h('button', { type: 'button', title: 'A capo (seconda riga)', style: { background: '#262f36', color: '#fff', width: 'auto', padding: '0 6px' }, onclick: () => { input.value += '\\n'; draw(); onChange(input.value); } }, '↵'));
+    [['l', 'B'], ['o', 'I'], ['n', 'U'], ['m', 'S'], ['k', '?'], ['r', '↺']].map(([c, l]) => h('button', { type: 'button', title: '§' + c, style: { background: 'var(--ink-4)', color: 'var(--paper)' }, onclick: () => insert(c) }, l)),
+    h('button', { type: 'button', title: 'A capo (seconda riga)', style: { background: 'var(--ink-4)', color: 'var(--paper)', width: 'auto', padding: '0 6px' }, onclick: () => { input.value += '\\n'; draw(); onChange(input.value); } }, '↵'));
   return h('.col', { style: { flex: 2, gap: '6px', minWidth: 0 } }, input, palette, preview);
 }
 
@@ -108,7 +108,7 @@ function renderOptions(body, s) {
     const needsRestart = Object.keys(pending).some((k) => !PROPS.find((d) => d.key === k && d.live));
     saveBar.append(...[
       h('strong', `${n} ${n === 1 ? 'modifica' : 'modifiche'} non salvate`),
-      running && needsRestart ? h('span.small', { style: { color: '#f2d58a' } }, 'Alcune richiedono il riavvio del server.') : null,
+      running && needsRestart ? h('span.small', { style: { color: 'var(--yellow)' } }, 'Alcune richiedono il riavvio del server.') : null,
       h('span.grow'),
       btn('Annulla', { cls: 'sm', onclick: () => { pending = {}; draw(); updateBar(); } }),
       running && needsRestart ? btn('Salva e riavvia', { cls: 'sm blue', icon: 'restart', onclick: () => save(true) }) : null,
