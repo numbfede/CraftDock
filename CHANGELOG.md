@@ -11,6 +11,7 @@ versione in `package.json` come testo della release su GitHub, e il sito la most
 - **Aggiornamenti dall'app.** Quando esce una nuova versione compare un avviso: "Aggiorna ora" scarica l'installer, ferma i server in modo sicuro e riapre CraftDock aggiornato. Il controllo si può disattivare.
 - **Pianificazione.** Nuova scheda per ogni server: riavvii, backup, messaggi in chat, comandi, accensione e spegnimento a orario, nei giorni che scegli. Riavvio e spegnimento avvisano i giocatori 5 e 1 minuto prima.
 - **Supporto.** In Impostazioni c'è "Copia informazioni per il supporto" (versioni, sistema, server, ultime righe del log, senza il tuo nome utente) e il pulsante per aprire la cartella dei log.
+- **Importa cartella senza .jar.** Le cartelle scaricate da Aternos o da altri hosting (mondo, mod e impostazioni ma senza il programma del server) ora si importano: CraftDock riconosce tipo e versione dai file e scarica il server che manca.
 - Il registro dell'app viene salvato su file, utile quando qualcosa va storto.
 - Installer con nome fisso: il link di download del sito porta sempre all'ultima versione.
 
@@ -20,6 +21,7 @@ versione in `package.json` come testo della release su GitHub, e il sito la most
 - **In-app updates.** When a new version is out you get a notice: "Update now" downloads the installer, stops servers safely and reopens the updated CraftDock. The check can be turned off.
 - **Schedule.** New tab for every server: restarts, backups, chat messages, commands, start and stop at a set time, on the days you pick. Restarts and stops warn players 5 and 1 minute before.
 - **Support.** Settings has "Copy support info" (versions, system, servers, last log lines, without your user name) and a button to open the logs folder.
+- **Import a folder without the .jar.** Folders downloaded from Aternos or other hosts (world, mods and settings but no server program) can now be imported: CraftDock works out type and version from the files and downloads the missing server.
 - The app log is saved to a file, handy when something goes wrong.
 - Fixed installer name: the website download link always points to the latest version.
 
