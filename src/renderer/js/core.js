@@ -76,17 +76,17 @@ function btn(label, opts = {}) {
 
 // ---------- Notifiche ----------
 function toast(msg, type = 'info', ms = 4200) {
-  const t = h('.toast.' + type, msg);
-  document.getElementById('toasts').appendChild(t);
-  setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(() => t.remove(), 300); }, ms);
+  const el = h('.toast.' + type, msg);
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; setTimeout(() => el.remove(), 300); }, ms);
 }
 
 function errToast(e) {
   console.error(e);
-  const t = h('.toast.err', e.message || String(e));
-  if (e.url) t.appendChild(h('div', h('a', { onclick: () => api('shell:openExternal', e.url) }, 'Apri la pagina')));
-  document.getElementById('toasts').appendChild(t);
-  setTimeout(() => t.remove(), 8000);
+  const el = h('.toast.err', e.message || String(e));
+  if (e.url) el.appendChild(h('div', h('a', { onclick: () => api('shell:openExternal', e.url) }, t('Apri la pagina'))));
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 8000);
 }
 
 /** Esegue una chiamata mostrando un toast in caso di errore. */
@@ -100,25 +100,25 @@ async function run(fn, okMsg) {
 
 // Task in background (download/installazioni)
 const tasks = new Map();
-function onTask(t) {
+function onTask(task) {
   const root = document.getElementById('tasks');
-  let el = tasks.get(t.id);
+  let el = tasks.get(task.id);
   if (!el) {
     el = h('.task', h('.tl', h('span.lbl'), h('span.pct.muted')), h('.bar', h('div')));
     root.appendChild(el);
-    tasks.set(t.id, el);
+    tasks.set(task.id, el);
   }
-  el.querySelector('.lbl').textContent = t.status === 'error' ? `${t.label}: ${t.error}` : t.label;
+  el.querySelector('.lbl').textContent = task.status === 'error' ? `${task.label}: ${task.error}` : task.label;
   const bar = el.querySelector('.bar');
   const pct = el.querySelector('.pct');
-  if (t.progress == null && t.status === 'running') { bar.classList.add('indet'); pct.textContent = ''; } else {
+  if (task.progress == null && task.status === 'running') { bar.classList.add('indet'); pct.textContent = ''; } else {
     bar.classList.remove('indet');
-    bar.firstChild.style.width = Math.round((t.progress || 0) * 100) + '%';
-    pct.textContent = t.status === 'running' ? Math.round((t.progress || 0) * 100) + '%' : '';
+    bar.firstChild.style.width = Math.round((task.progress || 0) * 100) + '%';
+    pct.textContent = task.status === 'running' ? Math.round((task.progress || 0) * 100) + '%' : '';
   }
-  el.className = 'task ' + t.status;
-  if (t.status !== 'running') {
-    setTimeout(() => { el.remove(); tasks.delete(t.id); }, t.status === 'error' ? 9000 : 2200);
+  el.className = 'task ' + task.status;
+  if (task.status !== 'running') {
+    setTimeout(() => { el.remove(); tasks.delete(task.id); }, task.status === 'error' ? 9000 : 2200);
   }
 }
 
@@ -128,7 +128,7 @@ function modal({ title, body, foot, wide, xwide, onClose }) {
   const close = () => { back.remove(); document.removeEventListener('keydown', esc); onClose && onClose(); };
   const esc = (e) => { if (e.key === 'Escape') close(); };
   const box = h('.modal' + (wide ? '.wide' : '') + (xwide ? '.xwide' : ''),
-    h('.modal-head', h('h2', title), h('button.btn.ghost.sm.icon.x', { onclick: close, title: 'Chiudi' }, icon('x'))),
+    h('.modal-head', h('h2', title), h('button.btn.ghost.sm.icon.x', { onclick: close, title: t('Chiudi') }, icon('x'))),
     h('.modal-body', body),
     foot ? h('.modal-foot', foot) : null);
   const back = h('.modal-back', { onmousedown: (e) => { if (e.target === back) close(); } }, box);
@@ -137,14 +137,14 @@ function modal({ title, body, foot, wide, xwide, onClose }) {
   return { close, box, body: box.querySelector('.modal-body'), foot: box.querySelector('.modal-foot') };
 }
 
-function confirmBox(title, message, { okLabel = 'Conferma', danger = false, extra } = {}) {
+function confirmBox(title, message, { okLabel = t('Conferma'), danger = false, extra } = {}) {
   return new Promise((resolve) => {
     let done = false;
     const finish = (v) => { if (done) return; done = true; m.close(); resolve(v); };
     const m = modal({
       title,
       body: h('div', typeof message === 'string' ? h('p.muted', { style: { margin: 0 } }, message) : message, extra || null),
-      foot: [btn('Annulla', { onclick: () => finish(false) }), btn(okLabel, { cls: danger ? 'danger' : 'primary', onclick: () => finish(true) })],
+      foot: [btn(t('Annulla'), { onclick: () => finish(false) }), btn(okLabel, { cls: danger ? 'danger' : 'primary', onclick: () => finish(true) })],
       onClose: () => finish(false),
     });
   });
@@ -159,7 +159,7 @@ function promptBox(title, { label, value = '', placeholder = '', okLabel = 'OK',
     const m = modal({
       title,
       body: h('.field', label ? h('label', label) : null, input, hint ? h('.hint', hint) : null),
-      foot: [btn('Annulla', { onclick: () => finish(null) }), btn(okLabel, { cls: 'primary', onclick: () => finish(input.value.trim()) })],
+      foot: [btn(t('Annulla'), { onclick: () => finish(null) }), btn(okLabel, { cls: 'primary', onclick: () => finish(input.value.trim()) })],
       onClose: () => finish(null),
     });
     setTimeout(() => input.focus(), 30);
@@ -169,20 +169,21 @@ function promptBox(title, { label, value = '', placeholder = '', okLabel = 'OK',
 // ---------- Formattazione ----------
 function fmtBytes(n) {
   if (n == null) return '–';
-  const u = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const u = ['B', t('KB'), t('MB'), t('GB'), t('TB')];
   let i = 0;
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
   return `${n.toFixed(n < 10 && i > 0 ? 1 : 0)} ${u[i]}`;
 }
-function fmtNum(n) { return new Intl.NumberFormat('it-IT', { notation: n > 99999 ? 'compact' : 'standard' }).format(n || 0); }
-function fmtDate(t) { return t ? new Date(t).toLocaleString('it-IT', { dateStyle: 'medium', timeStyle: 'short' }) : '–'; }
-function fmtAgo(t) {
-  if (!t) return '–';
-  const s = Math.round((Date.now() - t) / 1000);
-  if (s < 60) return 'pochi secondi fa';
-  if (s < 3600) return `${Math.round(s / 60)} min fa`;
-  if (s < 86400) return `${Math.round(s / 3600)} ore fa`;
-  return `${Math.round(s / 86400)} giorni fa`;
+const LOCALE = i18n.getLang() === 'en' ? 'en-GB' : 'it-IT';
+function fmtNum(n) { return new Intl.NumberFormat(LOCALE, { notation: n > 99999 ? 'compact' : 'standard' }).format(n || 0); }
+function fmtDate(ts) { return ts ? new Date(ts).toLocaleString(LOCALE, { dateStyle: 'medium', timeStyle: 'short' }) : '–'; }
+function fmtAgo(ts) {
+  if (!ts) return '–';
+  const s = Math.round((Date.now() - ts) / 1000);
+  if (s < 60) return t('pochi secondi fa');
+  if (s < 3600) return t('{n} min fa', { n: Math.round(s / 60) });
+  if (s < 86400) return tn(Math.round(s / 3600), t('{n} ora fa'), t('{n} ore fa'));
+  return tn(Math.round(s / 86400), t('{n} giorno fa'), t('{n} giorni fa'));
 }
 function fmtDuration(ms) {
   const s = Math.floor(ms / 1000);
@@ -211,11 +212,11 @@ function mcText(text, { amp = false } = {}) {
   return frag;
 }
 
-function copyText(text, label = 'Copiato negli appunti') {
-  navigator.clipboard.writeText(text).then(() => toast(label, 'ok', 2000)).catch(() => toast('Impossibile copiare', 'err'));
+function copyText(text, label = t('Copiato negli appunti')) {
+  navigator.clipboard.writeText(text).then(() => toast(label, 'ok', 2000)).catch(() => toast(t('Impossibile copiare'), 'err'));
 }
 
-const STATUS_LABEL = { stopped: 'Offline', starting: 'Avvio…', running: 'Online', stopping: 'Arresto…', crashed: 'Crash', installing: 'Installazione…', error: 'Errore' };
+const STATUS_LABEL = { stopped: t('Offline'), starting: t('Avvio…'), running: t('Online'), stopping: t('Arresto…'), crashed: t('Crash'), installing: t('Installazione…'), error: t('Errore') };
 
 function currentServer() { return App.servers.find((s) => s.id === App.selectedId) || null; }
 function serverStatus(s) { return (s && s.state && s.state.status) || 'stopped'; }
@@ -245,6 +246,6 @@ function sparkline(canvas, values, { color = '#5bd16f', max } = {}) {
 }
 
 function debounce(fn, ms) {
-  let t;
-  return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
+  let timer;
+  return (...a) => { clearTimeout(timer); timer = setTimeout(() => fn(...a), ms); };
 }

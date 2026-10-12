@@ -11,6 +11,16 @@ I tuoi amici entrano **senza port forwarding** grazie al tunnel playit.gg integr
 
 **[Scarica CraftDock per Windows](https://craftdock.numbfede.com/download)** (installer) oppure la [versione portatile](https://craftdock.numbfede.com/download/portable). I link puntano sempre all'ultima versione pubblicata.
 
+## Novità della 1.2
+
+- Interfaccia in **italiano e inglese** (segue la lingua di Windows, si cambia in Impostazioni).
+- **Aggiornamenti dall'app**: avviso quando esce una nuova versione e installazione con un clic.
+- **Pianificazione** per ogni server: riavvii, backup, messaggi, comandi, accensione e spegnimento a orario.
+- **Supporto**: copia delle informazioni di diagnostica e log dell'app su file.
+
+Tutte le versioni: [CHANGELOG.md](CHANGELOG.md) · pagina [Novità](https://craftdock.numbfede.com/novita).
+Firma del codice e avviso SmartScreen: [docs/FIRMA-CODICE.md](docs/FIRMA-CODICE.md).
+
 ## Avvio dal codice
 
 1. Installa [Node.js](https://nodejs.org) 20 o superiore (versione LTS).

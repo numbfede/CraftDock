@@ -14,10 +14,15 @@ async function call(channel, ...args) {
   return r.data;
 }
 
-const EVENTS = ['server:log', 'server:status', 'server:players', 'server:stats', 'server:eula', 'servers:changed', 'task',
+// lingua dell'interfaccia, letta in modo sincrono prima che parta il resto
+let lang = 'it';
+try { lang = ipcRenderer.sendSync('app:lang') || 'it'; } catch (_) {}
+
+const EVENTS = ['update:state', 'server:log', 'server:status', 'server:players', 'server:stats', 'server:eula', 'servers:changed', 'task',
   'tunnel:log', 'tunnel:status', 'tunnel:claim', 'tunnel:address', 'tunnel:tunnels', 'backups:changed', 'app:shutting-down'];
 
 contextBridge.exposeInMainWorld('craftdock', {
+  lang,
   call,
   on(channel, fn) {
     if (!EVENTS.includes(channel)) throw new Error('Evento non consentito: ' + channel);

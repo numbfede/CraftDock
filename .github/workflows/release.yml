@@ -2,6 +2,8 @@
 # Parte con il push di un tag v* oppure a mano da Actions → Release → Run workflow:
 # il tag viene creato in automatico dalla versione in package.json.
 # La chiave CurseForge, se presente, arriva dal secret CF_API_KEY e non finisce mai nel codice.
+# Firma del codice (facoltativa): se esiste il secret SIGNPATH_API_TOKEN gli .exe vengono firmati
+# con SignPath prima della pubblicazione. Istruzioni in docs/FIRMA-CODICE.md.
 name: Release
 
 on:
@@ -15,6 +17,8 @@ permissions:
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,10 +37,44 @@ jobs:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
+      - name: Carica gli exe da firmare
+        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
+        id: unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: craftdock-unsigned
+          path: |
+            dist/CraftDock-Setup.exe
+            dist/CraftDock-Portable.exe
+          if-no-files-found: error
+
+      - name: Firma con SignPath (approvazione manuale)
+        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG || 'CraftDock' }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: dist-signed
+
+      - name: Usa gli exe firmati
+        if: ${{ env.SIGNPATH_API_TOKEN != '' }}
+        shell: bash
+        run: |
+          cp -f dist-signed/CraftDock-Setup.exe dist/CraftDock-Setup.exe
+          cp -f dist-signed/CraftDock-Portable.exe dist/CraftDock-Portable.exe
+
       - name: Versione
         id: v
         shell: bash
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - name: Note della versione da CHANGELOG.md
+        run: node scripts/release-notes.js > release-notes.md
 
       - name: Pubblica la release
         uses: softprops/action-gh-release@v2
@@ -45,7 +83,7 @@ jobs:
           name: CraftDock ${{ steps.v.outputs.version }}
           target_commitish: ${{ github.sha }}
           files: |
-            dist/*.exe
-            dist/*.exe.blockmap
-          generate_release_notes: true
+            dist/CraftDock-Setup.exe
+            dist/CraftDock-Portable.exe
+          body_path: release-notes.md
           fail_on_unmatched_files: true

@@ -7,6 +7,7 @@ const { spawn } = require('child_process');
 const { getJson, getText, download, compareVersions, guessJavaMajor, exists } = require('./util');
 const zip = require('./zip');
 
+const { t } = require('../shared/i18n');
 const MOJANG_MANIFEST = 'https://piston-meta.mojang.com/mc/game/version_manifest_v2.json';
 const FABRIC = 'https://meta.fabricmc.net/v2';
 const QUILT = 'https://meta.quiltmc.org/v3';
@@ -16,13 +17,13 @@ const PAPER = 'https://fill.papermc.io/v3/projects/paper';
 const PURPUR = 'https://api.purpurmc.org/v2/purpur';
 
 const TYPES = {
-  vanilla: { name: 'Vanilla', mods: false, plugins: false, desc: 'Minecraft ufficiale, senza modifiche.' },
-  fabric: { name: 'Fabric', mods: true, plugins: false, desc: 'Leggero e aggiornato subito alle nuove versioni. Il più usato per le mod moderne.' },
-  quilt: { name: 'Quilt', mods: true, plugins: false, desc: 'Fork di Fabric, compatibile con la maggior parte delle mod Fabric.' },
-  neoforge: { name: 'NeoForge', mods: true, plugins: false, desc: 'Successore di Forge dalla 1.20.2 in poi, per grandi modpack.' },
-  forge: { name: 'Forge', mods: true, plugins: false, desc: 'Il loader storico: necessario per molti modpack fino alla 1.20.1.' },
-  paper: { name: 'Paper', mods: false, plugins: true, desc: 'Server ottimizzato con supporto ai plugin Bukkit/Spigot.' },
-  purpur: { name: 'Purpur', mods: false, plugins: true, desc: 'Basato su Paper, con molte opzioni di gameplay in più.' },
+  vanilla: { name: 'Vanilla', mods: false, plugins: false, desc: t('Minecraft ufficiale, senza modifiche.') },
+  fabric: { name: 'Fabric', mods: true, plugins: false, desc: t('Leggero e aggiornato subito alle nuove versioni. Il più usato per le mod moderne.') },
+  quilt: { name: 'Quilt', mods: true, plugins: false, desc: t('Fork di Fabric, compatibile con la maggior parte delle mod Fabric.') },
+  neoforge: { name: 'NeoForge', mods: true, plugins: false, desc: t('Successore di Forge dalla 1.20.2 in poi, per grandi modpack.') },
+  forge: { name: 'Forge', mods: true, plugins: false, desc: t('Il loader storico: necessario per molti modpack fino alla 1.20.1.') },
+  paper: { name: 'Paper', mods: false, plugins: true, desc: t('Server ottimizzato con supporto ai plugin Bukkit/Spigot.') },
+  purpur: { name: 'Purpur', mods: false, plugins: true, desc: t('Basato su Paper, con molte opzioni di gameplay in più.') },
 };
 
 // Mappatura loader → nomi usati da Modrinth/CurseForge
@@ -94,7 +95,7 @@ async function listGameVersions(type, { snapshots = false } = {}) {
       const p = await cached('purpur', 30 * 60e3, () => getJson(PURPUR));
       return [...p.versions].sort((a, b) => compareVersions(b, a)).map((id) => ({ id, stable: true }));
     }
-    default: throw new Error('Tipo server sconosciuto: ' + type);
+    default: throw new Error(t('Tipo server sconosciuto: ') + type);
   }
 }
 
@@ -191,9 +192,9 @@ async function install(server, { java, onProgress, onLog }) {
   const javaMajor = await requiredJava(mc);
   let loaderVersion = server.loaderVersion;
   if (server.type !== 'vanilla' && !loaderVersion) {
-    step(null, 'Cerco la versione del loader…');
+    step(null, t('Cerco la versione del loader…'));
     const list = await listLoaderVersions(server.type, mc);
-    if (!list.length) throw new Error(`Nessuna versione di ${TYPES[server.type].name} disponibile per Minecraft ${mc}`);
+    if (!list.length) throw new Error(t('Nessuna versione di {p0} disponibile per Minecraft {mc}', { p0: TYPES[server.type].name, mc }));
     loaderVersion = list[0].id;
   }
   const needJava = async () => java.ensure(javaMajor, { onProgress: step });
@@ -202,19 +203,19 @@ async function install(server, { java, onProgress, onLog }) {
     case 'vanilla': {
       const m = await mojangManifest();
       const v = m.versions.find((x) => x.id === mc);
-      if (!v) throw new Error('Versione Minecraft non trovata: ' + mc);
+      if (!v) throw new Error(t('Versione Minecraft non trovata: ') + mc);
       const json = await getJson(v.url);
-      if (!json.downloads || !json.downloads.server) throw new Error(`La ${mc} non ha un server ufficiale scaricabile`);
-      step(0, `Scarico server Minecraft ${mc}…`);
-      await download(json.downloads.server.url, path.join(dir, 'server.jar'), { sha1: json.downloads.server.sha1, onProgress: (p) => step(p, `Scarico server Minecraft ${mc}…`) });
+      if (!json.downloads || !json.downloads.server) throw new Error(t('La {mc} non ha un server ufficiale scaricabile', { mc }));
+      step(0, t('Scarico server Minecraft {mc}…', { mc }));
+      await download(json.downloads.server.url, path.join(dir, 'server.jar'), { sha1: json.downloads.server.sha1, onProgress: (p) => step(p, t('Scarico server Minecraft {mc}…', { mc })) });
       return { launch: { kind: 'jar', jar: 'server.jar' }, javaMajor, loaderVersion: null };
     }
     case 'fabric': {
       const installers = await getJson(`${FABRIC}/versions/installer`);
       const inst = (installers.find((i) => i.stable) || installers[0]).version;
-      step(0, `Scarico Fabric ${loaderVersion}…`);
+      step(0, t('Scarico Fabric {loaderVersion}…', { loaderVersion }));
       const url = `${FABRIC}/versions/loader/${encodeURIComponent(mc)}/${encodeURIComponent(loaderVersion)}/${encodeURIComponent(inst)}/server/jar`;
-      await download(url, path.join(dir, 'fabric-server-launch.jar'), { onProgress: (p) => step(p, `Scarico Fabric ${loaderVersion}…`) });
+      await download(url, path.join(dir, 'fabric-server-launch.jar'), { onProgress: (p) => step(p, t('Scarico Fabric {loaderVersion}…', { loaderVersion })) });
       // il launcher Fabric scarica il server vanilla al primo avvio; lo pre-scarichiamo per un avvio più veloce
       try {
         const m = await mojangManifest();
@@ -222,23 +223,23 @@ async function install(server, { java, onProgress, onLog }) {
         if (v) {
           const json = await getJson(v.url);
           if (json.downloads && json.downloads.server) {
-            await download(json.downloads.server.url, path.join(dir, 'server.jar'), { sha1: json.downloads.server.sha1, onProgress: (p) => step(p, 'Scarico server vanilla…') });
+            await download(json.downloads.server.url, path.join(dir, 'server.jar'), { sha1: json.downloads.server.sha1, onProgress: (p) => step(p, t('Scarico server vanilla…')) });
           }
         }
-      } catch (e) { onLog && onLog('[CraftDock] Pre-download vanilla saltato: ' + e.message); }
+      } catch (e) { onLog && onLog(t('[CraftDock] Pre-download vanilla saltato: ') + e.message); }
       return { launch: { kind: 'jar', jar: 'fabric-server-launch.jar' }, javaMajor, loaderVersion };
     }
     case 'quilt': {
       const meta = parseMavenVersions(await getText('https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/maven-metadata.xml'));
       const instV = meta.filter((v) => !/beta|pre/.test(v)).sort((a, b) => compareVersions(b, a))[0] || meta[meta.length - 1];
       const instJar = path.join(dir, 'quilt-installer.jar');
-      step(0, 'Scarico installer Quilt…');
-      await download(`https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/${instV}/quilt-installer-${instV}.jar`, instJar, { onProgress: (p) => step(p, 'Scarico installer Quilt…') });
+      step(0, t('Scarico installer Quilt…'));
+      await download(`https://maven.quiltmc.org/repository/release/org/quiltmc/quilt-installer/${instV}/quilt-installer-${instV}.jar`, instJar, { onProgress: (p) => step(p, t('Scarico installer Quilt…')) });
       const javaPath = await needJava();
-      step(null, 'Installo Quilt…');
+      step(null, t('Installo Quilt…'));
       const code = await runJava(javaPath, ['-jar', instJar, 'install', 'server', mc, loaderVersion, '--download-server', '--install-dir=.'], dir, onLog);
       await fsp.rm(instJar, { force: true });
-      if (code !== 0) throw new Error(`Installer Quilt terminato con codice ${code}`);
+      if (code !== 0) throw new Error(t('Installer Quilt terminato con codice {code}', { code }));
       return { launch: { kind: 'jar', jar: 'quilt-server-launch.jar' }, javaMajor, loaderVersion };
     }
     case 'forge':
@@ -248,35 +249,35 @@ async function install(server, { java, onProgress, onLog }) {
       const url = isNeo ? `${NEO_MAVEN}/${full}/neoforge-${full}-installer.jar` : `${FORGE_MAVEN}/${full}/forge-${full}-installer.jar`;
       const instJar = path.join(dir, 'installer.jar');
       const name = TYPES[server.type].name;
-      step(0, `Scarico installer ${name} ${loaderVersion}…`);
-      await download(url, instJar, { onProgress: (p) => step(p, `Scarico installer ${name}…`) });
+      step(0, t('Scarico installer {name} {loaderVersion}…', { name, loaderVersion }));
+      await download(url, instJar, { onProgress: (p) => step(p, t('Scarico installer {name}…', { name })) });
       const javaPath = await needJava();
-      step(null, `Installo ${name} (può richiedere qualche minuto)…`);
+      step(null, t('Installo {name} (può richiedere qualche minuto)…', { name }));
       let code = await runJava(javaPath, ['-jar', instJar, '--installServer'], dir, onLog);
       if (code !== 0 && isNeo) code = await runJava(javaPath, ['-jar', instJar, '--install-server', '.'], dir, onLog);
       await fsp.rm(instJar, { force: true });
       await fsp.rm(path.join(dir, 'installer.jar.log'), { force: true });
-      if (code !== 0) throw new Error(`Installer ${name} terminato con codice ${code}. Controlla il log.`);
+      if (code !== 0) throw new Error(t('Installer {name} terminato con codice {code}. Controlla il log.', { name, code }));
       const launch = await detectLaunch(dir, { type: server.type, loaderVersion: full });
-      if (!launch) throw new Error(`Installazione ${name} completata ma non trovo come avviarlo`);
+      if (!launch) throw new Error(t('Installazione {name} completata ma non trovo come avviarlo', { name }));
       return { launch, javaMajor, loaderVersion };
     }
     case 'paper': {
       const builds = await listLoaderVersions('paper', mc);
       const b = builds.find((x) => x.id === String(loaderVersion)) || builds[0];
-      if (!b || !b.url) throw new Error('Build Paper non trovata');
+      if (!b || !b.url) throw new Error(t('Build Paper non trovata'));
       await rmGlob(dir, /^paper.*\.jar$/i);
-      step(0, `Scarico Paper ${mc} build ${b.id}…`);
-      await download(b.url, path.join(dir, 'paper.jar'), { onProgress: (p) => step(p, `Scarico Paper ${mc}…`) });
+      step(0, t('Scarico Paper {mc} build {id}…', { mc, id: b.id }));
+      await download(b.url, path.join(dir, 'paper.jar'), { onProgress: (p) => step(p, t('Scarico Paper {mc}…', { mc })) });
       return { launch: { kind: 'jar', jar: 'paper.jar' }, javaMajor, loaderVersion: b.id };
     }
     case 'purpur': {
       await rmGlob(dir, /^purpur.*\.jar$/i);
-      step(0, `Scarico Purpur ${mc} build ${loaderVersion}…`);
-      await download(`${PURPUR}/${encodeURIComponent(mc)}/${encodeURIComponent(loaderVersion)}/download`, path.join(dir, 'purpur.jar'), { onProgress: (p) => step(p, `Scarico Purpur ${mc}…`) });
+      step(0, t('Scarico Purpur {mc} build {loaderVersion}…', { mc, loaderVersion }));
+      await download(`${PURPUR}/${encodeURIComponent(mc)}/${encodeURIComponent(loaderVersion)}/download`, path.join(dir, 'purpur.jar'), { onProgress: (p) => step(p, t('Scarico Purpur {mc}…', { mc })) });
       return { launch: { kind: 'jar', jar: 'purpur.jar' }, javaMajor, loaderVersion };
     }
-    default: throw new Error('Tipo server non supportato: ' + server.type);
+    default: throw new Error(t('Tipo server non supportato: ') + server.type);
   }
 }
 

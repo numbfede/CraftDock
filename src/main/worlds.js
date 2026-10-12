@@ -9,6 +9,7 @@ const { readLevelInfo } = require('./nbt');
 const properties = require('./properties');
 const zip = require('./zip');
 
+const { t } = require('../shared/i18n');
 const BUKKIT_TYPES = ['paper', 'purpur'];
 
 async function worldInfo(dir) {
@@ -118,13 +119,13 @@ class WorldManager {
     let tmp = null;
     if (/\.zip$/i.test(source)) {
       tmp = path.join(this.store.paths.cache, 'import-' + Date.now());
-      opts.onProgress && opts.onProgress(null, 'Estraggo lo zip…');
+      opts.onProgress && opts.onProgress(null, t('Estraggo lo zip…'));
       await zip.extract(source, tmp);
       src = await this.findWorldRoot(tmp);
-      if (!src) { await fsp.rm(tmp, { recursive: true, force: true }); throw new Error('Nello zip non c\'è nessun mondo (manca level.dat)'); }
+      if (!src) { await fsp.rm(tmp, { recursive: true, force: true }); throw new Error(t('Nello zip non c\'è nessun mondo (manca level.dat)')); }
     } else if (!(await isWorldDir(src))) {
       const found = await this.findWorldRoot(src);
-      if (!found) throw new Error('La cartella selezionata non contiene un mondo Minecraft (manca level.dat)');
+      if (!found) throw new Error(t('La cartella selezionata non contiene un mondo Minecraft (manca level.dat)'));
       src = found;
     }
     const info = await worldInfo(src);
@@ -133,7 +134,7 @@ class WorldManager {
     let i = 2;
     while (await exists(dest)) { dest = path.join(server.dir, `${name}-${i++}`); }
     name = path.basename(dest);
-    opts.onProgress && opts.onProgress(null, `Copio il mondo "${info.levelName || name}"…`);
+    opts.onProgress && opts.onProgress(null, t('Copio il mondo "{p0}"…', { p0: info.levelName || name }));
     await copyDir(src, dest, (f) => !/session\.lock$/.test(f));
     if (tmp) await fsp.rm(tmp, { recursive: true, force: true });
 
@@ -162,7 +163,7 @@ class WorldManager {
 
   async remove(server, folder) {
     const active = await this.levelName(server);
-    if (folder === active) throw new Error('Non puoi eliminare il mondo attivo: attivane prima un altro');
+    if (folder === active) throw new Error(t('Non puoi eliminare il mondo attivo: attivane prima un altro'));
     for (const f of [folder, folder + '_nether', folder + '_the_end']) {
       const p = path.resolve(server.dir, f);
       if (path.dirname(p) !== path.resolve(server.dir)) continue;

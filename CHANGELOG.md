@@ -1,0 +1,74 @@
+# Novità di CraftDock
+
+Ogni versione ha le note in italiano e in inglese. Il workflow Release usa la sezione della
+versione in `package.json` come testo della release su GitHub, e il sito la mostra nella pagina Novità.
+
+## 1.2.0 (2026-10-12)
+
+### Italiano
+- **Interfaccia in inglese.** La lingua segue quella di Windows; si cambia in Impostazioni → Lingua.
+- **Aggiornamenti dall'app.** Quando esce una nuova versione compare un avviso: "Aggiorna ora" scarica l'installer, ferma i server in modo sicuro e riapre CraftDock aggiornato. Il controllo si può disattivare.
+- **Pianificazione.** Nuova scheda per ogni server: riavvii, backup, messaggi in chat, comandi, accensione e spegnimento a orario, nei giorni che scegli. Riavvio e spegnimento avvisano i giocatori 5 e 1 minuto prima.
+- **Supporto.** In Impostazioni c'è "Copia informazioni per il supporto" (versioni, sistema, server, ultime righe del log, senza il tuo nome utente) e il pulsante per aprire la cartella dei log.
+- Il registro dell'app viene salvato su file, utile quando qualcosa va storto.
+- Installer con nome fisso: il link di download del sito porta sempre all'ultima versione.
+
+### English
+- **English interface.** The language follows Windows; change it in Settings → Language.
+- **In-app updates.** When a new version is out you get a notice: "Update now" downloads the installer, stops servers safely and reopens the updated CraftDock. The check can be turned off.
+- **Schedule.** New tab for every server: restarts, backups, chat messages, commands, start and stop at a set time, on the days you pick. Restarts and stops warn players 5 and 1 minute before.
+- **Support.** Settings has "Copy support info" (versions, system, servers, last log lines, without your user name) and a button to open the logs folder.
+- The app log is saved to a file, handy when something goes wrong.
+- Fixed installer name: the website download link always points to the latest version.
+
+## 1.1.2 (2026-10-12)
+
+### Italiano
+- Installer e versione portatile hanno ora un nome fisso (`CraftDock-Setup.exe`, `CraftDock-Portable.exe`) per il download diretto dal sito.
+
+### English
+- The installer and portable version now have fixed names (`CraftDock-Setup.exe`, `CraftDock-Portable.exe`) for direct downloads from the website.
+
+## 1.1.1 (2026-10-12)
+
+### Italiano
+- Nuova icona dell'app, con una versione semplificata per la barra delle applicazioni e l'area di notifica.
+
+### English
+- New app icon, with a simplified version for the taskbar and notification area.
+
+## 1.1.0 (2026-10-12)
+
+### Italiano
+- Interfaccia ridisegnata: nuovi caratteri e icone, card a doppia cornice, barra del titolo scura e home con le funzioni principali.
+- Interruttori, cursori e caselle di spunta nello stile dell'app; animazioni più morbide (disattivate se Windows ha le animazioni ridotte).
+
+### English
+- Redesigned interface: new fonts and icons, double-bezel cards, a dark title bar and a home page with the main features.
+- Toggles, sliders and checkboxes in the app's style; smoother animations (turned off when Windows has reduced motion).
+
+## 1.0.2 (2026-10-12)
+
+### Italiano
+- Corretto un flag di avvio di Java scritto male che impediva l'avvio di alcuni server.
+- Java ignora i flag non riconosciuti invece di fermarsi.
+
+### English
+- Fixed a misspelled Java startup flag that stopped some servers from starting.
+- Java now ignores unrecognized flags instead of stopping.
+
+## 1.0.1 (2026-10-12)
+
+### Italiano
+- Compatibilità con playit.gg 1.0: collegamento dell'account dal browser e creazione automatica del tunnel per ogni server.
+
+### English
+- playit.gg 1.0 support: link your account from the browser and get a tunnel created automatically for each server.
+
+## 1.0.0 (2026-10-11)
+
+### Italiano
+- Prima versione: server Fabric, Quilt, Forge, NeoForge, Paper, Purpur e Vanilla, mod e modpack da Modrinth, importazione di mondi, backup, pannello opzioni, controlli rapidi e amici connessi senza port forwarding.
+
+### English
+- First release: Fabric, Quilt, Forge, NeoForge, Paper, Purpur and Vanilla servers, Modrinth mods and modpacks, world import, backups, an options panel, quick controls and friends connected without port forwarding.

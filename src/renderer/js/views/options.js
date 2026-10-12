@@ -37,7 +37,7 @@ function motdEditor(value, onChange) {
   const palette = h('.color-row',
     colors.map((c) => h('button', { type: 'button', title: '§' + c, class: 'mc-' + c, style: { background: 'currentColor' }, onclick: () => insert(c) })),
     [['l', 'B'], ['o', 'I'], ['n', 'U'], ['m', 'S'], ['k', '?'], ['r', '↺']].map(([c, l]) => h('button', { type: 'button', title: '§' + c, style: { background: 'var(--ink-4)', color: 'var(--paper)' }, onclick: () => insert(c) }, l)),
-    h('button', { type: 'button', title: 'A capo (seconda riga)', style: { background: 'var(--ink-4)', color: 'var(--paper)', width: 'auto', padding: '0 6px' }, onclick: () => { input.value += '\\n'; draw(); onChange(input.value); } }, '↵'));
+    h('button', { type: 'button', title: t('A capo (seconda riga)'), style: { background: 'var(--ink-4)', color: 'var(--paper)', width: 'auto', padding: '0 6px' }, onclick: () => { input.value += '\\n'; draw(); onChange(input.value); } }, '↵'));
   return h('.col', { style: { flex: 2, gap: '6px', minWidth: 0 } }, input, palette, preview);
 }
 
@@ -50,7 +50,7 @@ function renderOptions(body, s) {
   const grid = h('.prop-grid');
   const extraGrid = h('.prop-grid');
   const saveBar = h('.save-bar.hidden');
-  const searchInput = h('input.input', { placeholder: 'Cerca un\'opzione…', style: { maxWidth: '260px' } });
+  const searchInput = h('input.input', { placeholder: t('Cerca un\'opzione…'), style: { maxWidth: '260px' } });
 
   const chips = h('.cat-chips', PROP_CATS.map((c) => h('.chip' + (c.id === cat ? '.active' : ''), { onclick: (e) => { cat = c.id; App.optCat = cat; chips.querySelectorAll('.chip').forEach((x) => x.classList.toggle('active', x === e.target)); draw(); } }, c.label)));
 
@@ -78,7 +78,7 @@ function renderOptions(body, s) {
       control = h('input.ptext', { value: cur ?? '', placeholder: def.placeholder || '', type: def.type === 'password' ? 'password' : 'text' });
       control.addEventListener('input', () => set(control.value));
     }
-    const badge = running ? (def.live ? h('span.live', '● si applica subito') : h('span.restart', '↻ dopo il riavvio')) : null;
+    const badge = running ? (def.live ? h('span.live', t('● si applica subito')) : h('span.restart', t('↻ dopo il riavvio'))) : null;
     const el = h('.prop-card' + (def.wide || def.type === 'motd' ? '.wide' : '') + (changed ? '.changed' : ''),
       h('.prop-main', h('.plabel', def.label, def.help ? h('span.help', { title: def.help }, '?') : null), control),
       h('.prop-key', keyLine, badge));
@@ -92,7 +92,7 @@ function renderOptions(body, s) {
     const match = (def) => (cat === 'all' || def.cat === cat) && (!q || def.label.toLowerCase().includes(q) || def.key.includes(q));
     const defs = PROPS.filter((d) => (!d.ifPresent || d.key in props) && match(d));
     defs.forEach((d) => grid.appendChild(card(d, props[d.key] ?? (d.type === 'bool' ? 'false' : ''))));
-    if (!defs.length) grid.appendChild(h('.muted', 'Nessuna opzione corrisponde.'));
+    if (!defs.length) grid.appendChild(h('.muted', t('Nessuna opzione corrisponde.')));
     const known = new Set(PROPS.map((p) => p.key).concat(HIDDEN_PROPS));
     const extra = Object.keys(props).filter((k) => !known.has(k) && (!q || k.includes(q))).sort();
     extra.forEach((k) => extraGrid.appendChild(card({ key: k, label: k, type: 'text' }, props[k])));
@@ -107,12 +107,12 @@ function renderOptions(body, s) {
     const liveDefs = PROPS.filter((d) => d.live && d.key in pending);
     const needsRestart = Object.keys(pending).some((k) => !PROPS.find((d) => d.key === k && d.live));
     saveBar.append(...[
-      h('strong', `${n} ${n === 1 ? 'modifica' : 'modifiche'} non salvate`),
-      running && needsRestart ? h('span.small', { style: { color: 'var(--yellow)' } }, 'Alcune richiedono il riavvio del server.') : null,
+      h('strong', tn(n, '{n} modifica non salvata', '{n} modifiche non salvate')),
+      running && needsRestart ? h('span.small', { style: { color: 'var(--yellow)' } }, t('Alcune richiedono il riavvio del server.')) : null,
       h('span.grow'),
-      btn('Annulla', { cls: 'sm', onclick: () => { pending = {}; draw(); updateBar(); } }),
-      running && needsRestart ? btn('Salva e riavvia', { cls: 'sm blue', icon: 'restart', onclick: () => save(true) }) : null,
-      btn(running && liveDefs.length ? 'Salva e applica' : 'Salva', { cls: 'sm primary', icon: 'check', onclick: () => save(false) }),
+      btn(t('Annulla'), { cls: 'sm', onclick: () => { pending = {}; draw(); updateBar(); } }),
+      running && needsRestart ? btn(t('Salva e riavvia'), { cls: 'sm blue', icon: 'restart', onclick: () => save(true) }) : null,
+      btn(running && liveDefs.length ? t('Salva e applica') : t('Salva'), { cls: 'sm primary', icon: 'check', onclick: () => save(false) }),
     ].filter(Boolean));
   };
 
@@ -128,7 +128,7 @@ function renderOptions(body, s) {
         await run(() => api('servers:send', s.id, d.live(changes[d.key])));
       }
     }
-    if (restart) { await run(() => api('servers:restart', s.id)); toast('Salvato, riavvio in corso…', 'ok'); } else toast('Opzioni salvate', 'ok');
+    if (restart) { await run(() => api('servers:restart', s.id)); toast(t('Salvato, riavvio in corso…'), 'ok'); } else toast(t('Opzioni salvate'), 'ok');
     if ('server-port' in changes) await refreshServers();
     draw(); updateBar();
     if ('motd' in changes) renderMain();
@@ -136,13 +136,13 @@ function renderOptions(body, s) {
 
   searchInput.addEventListener('input', debounce(() => { search = searchInput.value; draw(); }, 150));
 
-  const extraSection = h('.props-panel.hidden', h('.props-panel-title', icon('fileCode'), 'Altre proprietà', h('span.small.muted', { style: { fontWeight: 400, fontSize: '13px' } }, 'presenti nel file ma senza un controllo dedicato')), extraGrid);
+  const extraSection = h('.props-panel.hidden', h('.props-panel-title', icon('fileCode'), t('Altre proprietà'), h('span.small.muted', { style: { fontWeight: 400, fontSize: '13px' } }, t('presenti nel file ma senza un controllo dedicato'))), extraGrid);
   body.appendChild(h('.row', { style: { marginBottom: '6px' } }, chips, h('span.grow'), searchInput));
-  if (running) body.appendChild(h('.info-note', icon('info'), h('div', 'Il server è acceso: difficoltà, modalità predefinita e whitelist si applicano subito; le altre opzioni dopo il riavvio. Per game rule, meteo, orario e modalità dei singoli giocatori usa ', h('a', { onclick: () => { App.tab = 'controls'; renderMain(); } }, 'Controlli rapidi'), '.')));
+  if (running) body.appendChild(h('.info-note', icon('info'), h('div', t('Il server è acceso: difficoltà, modalità predefinita e whitelist si applicano subito; le altre opzioni dopo il riavvio. Per game rule, meteo, orario e modalità dei singoli giocatori usa '), h('a', { onclick: () => { App.tab = 'controls'; renderMain(); } }, t('Controlli rapidi')), '.')));
   body.appendChild(h('.props-panel',
     h('.props-panel-title', icon('fileCode'), 'server.properties', h('.act',
-      btn('Apri file', { cls: 'sm', icon: 'external', onclick: () => run(() => api('servers:openFolder', s.id, '.')) }),
-      btn('Ricarica', { cls: 'sm', icon: 'refresh', onclick: () => load() }))),
+      btn(t('Apri file'), { cls: 'sm', icon: 'external', onclick: () => run(() => api('servers:openFolder', s.id, '.')) }),
+      btn(t('Ricarica'), { cls: 'sm', icon: 'refresh', onclick: () => load() }))),
     grid));
   body.appendChild(extraSection);
   body.appendChild(saveBar);

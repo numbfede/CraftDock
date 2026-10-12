@@ -18,12 +18,17 @@ const { PlayitManager, networkInfo } = require('./tunnel');
 const properties = require('./properties');
 const { slugify, exists, uid, getJson, readJson, writeJson, httpRequest, copyDir } = require('./util');
 
+const i18n = require('../shared/i18n');
+const { t } = i18n;
+const logger = require('./logger');
+const { Updater } = require('./updater');
+const { Scheduler, sanitize: sanitizeSchedules } = require('./scheduler');
 const ICON = path.join(__dirname, '..', 'renderer', 'assets', 'icon.png');
 
 let win = null;
 let tray = null;
 let quitting = false;
-let store; let java; let servers; let worlds; let backups; let mods; let playit;
+let store; let java; let servers; let worlds; let backups; let mods; let playit; let updater; let scheduler;
 
 // cartella dati alternativa (utile per test o per un'installazione portatile)
 if (process.env.CRAFTDOCK_DATA) app.setPath('userData', process.env.CRAFTDOCK_DATA);
@@ -47,13 +52,13 @@ function task(label) {
   };
 }
 async function withTask(label, fn) {
-  const t = task(label);
+  const tk = task(label);
   try {
-    const r = await fn(t.progress);
-    t.done();
+    const r = await fn(tk.progress);
+    tk.done();
     return r;
   } catch (e) {
-    t.fail(e);
+    tk.fail(e);
     throw e;
   }
 }
@@ -68,12 +73,12 @@ function serverView(s) {
 
 function needServer(id) {
   const s = store.get(id);
-  if (!s) throw new Error('Server non trovato');
+  if (!s) throw new Error(t('Server non trovato'));
   return s;
 }
 
 function needStopped(id) {
-  if (servers.isRunning(id)) throw new Error('Spegni prima il server');
+  if (servers.isRunning(id)) throw new Error(t('Spegni prima il server'));
 }
 
 // ---------- Creazione / importazione server ----------
@@ -98,37 +103,37 @@ async function uniqueDir(name) {
 }
 
 async function createServer(opts) {
-  if (!opts.eula) throw new Error('Devi accettare la EULA di Minecraft per creare un server');
+  if (!opts.eula) throw new Error(t('Devi accettare la EULA di Minecraft per creare un server'));
   const taken = store.servers.map((s) => Number(s.port));
   const port = Number(opts.port) || await findFreePort(25565, taken);
   const dir = await uniqueDir(opts.name);
   const server = await store.add({
-    name: opts.name || 'Nuovo server', type: opts.type, mcVersion: opts.mcVersion, loaderVersion: opts.loaderVersion || null,
+    name: opts.name || t('Nuovo server'), type: opts.type, mcVersion: opts.mcVersion, loaderVersion: opts.loaderVersion || null,
     dir, port, ramMb: Number(opts.ramMb) || store.config.defaultRamMb, launch: null, javaMajor: null,
   });
   send('servers:changed');
   servers.setStatus(server.id, 'installing');
   try {
-    await withTask(`Installo ${server.name}`, async (progress) => {
+    await withTask(t('Installo {name}', { name: server.name }), async (progress) => {
       const res = await loaders.install(server, { java, onProgress: progress, onLog: (l) => servers.pushLog(server.id, l, 'install') });
       await store.update(server.id, res);
       await servers.acceptEula(dir);
       await properties.update(path.join(dir, 'server.properties'), DEFAULT_PROPS(Object.assign({}, opts, { port })));
       if (opts.worldSource) {
-        progress(null, 'Importo il mondo…');
+        progress(null, t('Importo il mondo…'));
         await worlds.import(server, opts.worldSource, { onProgress: progress });
       }
       if (opts.pack) {
         const r = await mods.installPackFiles(server, opts.pack.file, opts.pack.info, progress);
-        if (r.disabled.length) servers.info(server.id, `Mod solo-client disattivate automaticamente: ${r.disabled.join(', ')}`);
+        if (r.disabled.length) servers.info(server.id, t('Mod solo-client disattivate automaticamente: {p0}', { p0: r.disabled.join(', ') }));
         r.warnings.forEach((w) => servers.info(server.id, '⚠ ' + w));
       }
     });
     servers.setStatus(server.id, 'stopped');
-    servers.info(server.id, 'Installazione completata. Premi Avvia!');
+    servers.info(server.id, t('Installazione completata. Premi Avvia!'));
   } catch (e) {
     servers.setStatus(server.id, 'error');
-    servers.info(server.id, 'Installazione fallita: ' + e.message);
+    servers.info(server.id, t('Installazione fallita: ') + e.message);
     send('servers:changed');
     throw e;
   }
@@ -138,11 +143,11 @@ async function createServer(opts) {
 
 async function importServerFolder({ dir, name, copy }) {
   const detected = await loaders.detectServer(dir);
-  if (!detected.launch) throw new Error('Non trovo il jar del server in questa cartella');
+  if (!detected.launch) throw new Error(t('Non trovo il jar del server in questa cartella'));
   let target = dir;
   if (copy) {
     target = await uniqueDir(name || path.basename(dir));
-    await withTask('Copio la cartella del server…', () => copyDir(dir, target));
+    await withTask(t('Copio la cartella del server…'), () => copyDir(dir, target));
   }
   const props = await properties.readFile(path.join(target, 'server.properties'));
   const s = await store.add({
@@ -228,10 +233,43 @@ function handle(channel, fn) {
 }
 
 function registerIpc() {
+  // lingua: letta in modo sincrono dal preload prima che l'interfaccia parta
+  ipcMain.on('app:lang', (e) => { e.returnValue = i18n.getLang(); });
   handle('app:info', async () => ({
     version: app.getVersion(), platform: process.platform, totalRamMb: Math.floor(os.totalmem() / 1048576),
-    config: store.config, paths: store.paths, types: loaders.TYPES, curseforge: mods.cfEnabled,
+    config: store.config, paths: store.paths, curseforge: mods.cfEnabled, lang: i18n.getLang(),
+    types: Object.fromEntries(Object.entries(loaders.TYPES).map(([k, v]) => [k, Object.assign({}, v, { desc: t(v.desc) })])),
+    logsDir: logger.dir(), packaged: app.isPackaged,
   }));
+  handle('app:setLanguage', async (lang) => {
+    const value = ['it', 'en'].includes(lang) ? lang : 'auto';
+    await store.saveConfig({ language: value });
+    i18n.setLang(i18n.resolveLang(value, app.getLocale()));
+    if (tray) tray.setContextMenu(trayMenu());
+    return i18n.getLang();
+  });
+  handle('app:diagnostics', () => diagnostics());
+  handle('app:openLogs', () => shell.openPath(logger.dir()));
+  handle('app:logError', (msg) => { logger.error('[interfaccia]', String(msg).slice(0, 4000)); return true; });
+
+  handle('update:get', () => updater.state);
+  handle('update:check', () => updater.check({ force: true }));
+  handle('update:install', () => {
+    const tk = task(t('Scarico l\'aggiornamento di CraftDock'));
+    return updater.install({
+      onProgress: (p) => tk.progress(p),
+      beforeQuit: async (launch) => {
+        tk.done(t('Aggiornamento scaricato: chiudo CraftDock e installo'));
+        logger.info('Aggiornamento a', updater.state.version);
+        quitting = true;
+        send('app:shutting-down');
+        await servers.stopAll();
+        playit.stop();
+        await launch();
+        setTimeout(() => app.quit(), 400);
+      },
+    }).catch((e) => { tk.fail(e); throw e; });
+  });
   handle('config:save', (patch) => store.saveConfig(patch));
 
   handle('dialog:openFolder', async (title) => {
@@ -252,9 +290,10 @@ function registerIpc() {
   handle('servers:importFolder', (opts) => importServerFolder(opts));
   handle('servers:detect', (dir) => loaders.detectServer(dir));
   handle('servers:update', async (id, patch) => {
-    const allowed = ['name', 'ramMb', 'jvmArgs', 'aikarFlags', 'autoRestart', 'autoBackupMinutes', 'backupKeep', 'backupOnStop', 'javaPath', 'port', 'publicAddress', 'notes', 'mcVersion'];
+    const allowed = ['name', 'ramMb', 'jvmArgs', 'aikarFlags', 'autoRestart', 'autoBackupMinutes', 'backupKeep', 'backupOnStop', 'javaPath', 'port', 'publicAddress', 'notes', 'mcVersion', 'schedules'];
     const clean = {};
     for (const k of allowed) if (k in patch) clean[k] = patch[k];
+    if ('schedules' in clean) clean.schedules = sanitizeSchedules(clean.schedules);
     const s = await store.update(id, clean);
     if ('port' in clean) await properties.update(path.join(s.dir, 'server.properties'), { 'server-port': String(clean.port) });
     if ('autoBackupMinutes' in clean) backups.schedule(id);
@@ -272,11 +311,11 @@ function registerIpc() {
   handle('servers:reinstall', async (id, { type, mcVersion, loaderVersion, backupFirst = true }) => {
     needStopped(id);
     const s = needServer(id);
-    if (backupFirst) await withTask('Backup prima della reinstallazione', (p) => backups.create(id, { scope: 'world', label: 'Prima di cambiare versione', onProgress: p })).catch(() => {});
+    if (backupFirst) await withTask(t('Backup prima della reinstallazione'), (p) => backups.create(id, { scope: 'world', label: 'Prima di cambiare versione', onProgress: p })).catch(() => {});
     const next = Object.assign({}, s, { type: type || s.type, mcVersion: mcVersion || s.mcVersion, loaderVersion: loaderVersion || null });
     servers.setStatus(id, 'installing');
     try {
-      const res = await withTask(`Reinstallo ${s.name}`, (progress) => loaders.install(next, { java, onProgress: progress, onLog: (l) => servers.pushLog(id, l, 'install') }));
+      const res = await withTask(t('Reinstallo {name}', { name: s.name }), (progress) => loaders.install(next, { java, onProgress: progress, onLog: (l) => servers.pushLog(id, l, 'install') }));
       await store.update(id, Object.assign({ type: next.type, mcVersion: next.mcVersion }, res));
       servers.setStatus(id, 'stopped');
     } catch (e) {
@@ -287,14 +326,14 @@ function registerIpc() {
     return serverView(store.get(id));
   });
   handle('servers:start', async (id) => {
-    let t = null; // il task compare solo se serve scaricare Java
-    const onProgress = (p, l) => { if (!t) t = task('Preparo Java…'); t.progress(p, l); };
+    let tk = null; // il task compare solo se serve scaricare Java
+    const onProgress = (p, l) => { if (!tk) tk = task(t('Preparo Java…')); tk.progress(p, l); };
     try {
       const r = await servers.start(id, { onProgress });
-      if (t) t.done('Java pronto');
+      if (tk) tk.done(t('Java pronto'));
       return r;
     } catch (e) {
-      if (t) t.fail(e);
+      if (tk) tk.fail(e);
       throw e;
     }
   });
@@ -312,7 +351,7 @@ function registerIpc() {
   handle('servers:setIcon', async (id, file) => {
     const s = needServer(id);
     const img = nativeImage.createFromPath(file);
-    if (img.isEmpty()) throw new Error('Immagine non valida');
+    if (img.isEmpty()) throw new Error(t('Immagine non valida'));
     await fsp.writeFile(path.join(s.dir, 'server-icon.png'), img.resize({ width: 64, height: 64, quality: 'best' }).toPNG());
     return true;
   });
@@ -324,13 +363,13 @@ function registerIpc() {
     const content = servers.logs(id).map((l) => l.line).join('\n').slice(-500000);
     const res = await httpRequest('https://api.mclo.gs/1/log', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'content=' + encodeURIComponent(content) });
     const j = await res.json();
-    if (!j.success) throw new Error(j.error || 'Caricamento fallito');
+    if (!j.success) throw new Error(j.error || t('Caricamento fallito'));
     return j.url;
   });
   handle('servers:openFolder', async (id, rel) => {
     const s = needServer(id);
     const p = path.resolve(s.dir, rel || '.');
-    if (!p.startsWith(path.resolve(s.dir))) throw new Error('Percorso non valido');
+    if (!p.startsWith(path.resolve(s.dir))) throw new Error(t('Percorso non valido'));
     await fsp.mkdir(p, { recursive: true });
     const err = await shell.openPath(p);
     if (err) throw new Error(err);
@@ -339,13 +378,13 @@ function registerIpc() {
   handle('servers:readFile', async (id, rel) => {
     const s = needServer(id);
     const p = path.resolve(s.dir, rel);
-    if (!p.startsWith(path.resolve(s.dir))) throw new Error('Percorso non valido');
+    if (!p.startsWith(path.resolve(s.dir))) throw new Error(t('Percorso non valido'));
     return fsp.readFile(p, 'utf8');
   });
   handle('servers:writeFile', async (id, rel, content) => {
     const s = needServer(id);
     const p = path.resolve(s.dir, rel);
-    if (!p.startsWith(path.resolve(s.dir))) throw new Error('Percorso non valido');
+    if (!p.startsWith(path.resolve(s.dir))) throw new Error(t('Percorso non valido'));
     await fsp.writeFile(p, content, 'utf8');
     return true;
   });
@@ -380,7 +419,7 @@ function registerIpc() {
   handle('versions:loader', (type, mc) => loaders.listLoaderVersions(type, mc));
   handle('versions:java', (mc) => loaders.requiredJava(mc));
   handle('java:list', (force) => java.list(force));
-  handle('java:install', (major) => withTask(`Installo Java ${major}`, (p) => java.install(major, { onProgress: p })));
+  handle('java:install', (major) => withTask(t('Installo Java {major}', { major }), (p) => java.install(major, { onProgress: p })));
 
   // Giocatori
   handle('players:lists', (id) => playerLists(needServer(id)));
@@ -391,18 +430,18 @@ function registerIpc() {
   handle('worlds:scanLocal', () => worlds.scanLocalSaves());
   handle('worlds:import', async (id, source, opts) => {
     needStopped(id);
-    return withTask('Importo il mondo', (p) => worlds.import(needServer(id), source, Object.assign({}, opts, { onProgress: p })));
+    return withTask(t('Importo il mondo'), (p) => worlds.import(needServer(id), source, Object.assign({}, opts, { onProgress: p })));
   });
   handle('worlds:setActive', (id, folder) => { needStopped(id); return worlds.setActive(needServer(id), folder); });
   handle('worlds:remove', (id, folder) => { needStopped(id); return worlds.remove(needServer(id), folder); });
   handle('worlds:export', async (id, folder) => {
-    const r = await dialog.showSaveDialog(win, { title: 'Esporta mondo', defaultPath: path.join(app.getPath('downloads'), `${folder}.zip`), filters: [{ name: 'Zip', extensions: ['zip'] }] });
+    const r = await dialog.showSaveDialog(win, { title: t('Esporta mondo'), defaultPath: path.join(app.getPath('downloads'), `${folder}.zip`), filters: [{ name: 'Zip', extensions: ['zip'] }] });
     if (r.canceled) return null;
     if (servers.isRunning(id)) {
       servers.send(id, 'save-all flush', { silent: true });
       await servers.waitFor(id, /Saved the game|Saved the world/i, 20000);
     }
-    await withTask(`Esporto ${folder}`, (p) => worlds.exportZip(needServer(id), folder, r.filePath, (n) => p(null, `Esporto: ${n} file…`)));
+    await withTask(t('Esporto {folder}', { folder }), (p) => worlds.exportZip(needServer(id), folder, r.filePath, (n) => p(null, t('Esporto: {n} file…', { n }))));
     shell.showItemInFolder(r.filePath);
     return r.filePath;
   });
@@ -413,8 +452,8 @@ function registerIpc() {
 
   // Backup
   handle('backups:list', (id) => backups.list(id));
-  handle('backups:create', (id, opts) => withTask('Backup in corso', (p) => backups.create(id, Object.assign({}, opts, { onProgress: p }))));
-  handle('backups:restore', (id, file) => withTask('Ripristino backup', (p) => backups.restore(id, file, { onProgress: p })));
+  handle('backups:create', (id, opts) => withTask(t('Backup in corso'), (p) => backups.create(id, Object.assign({}, opts, { onProgress: p }))));
+  handle('backups:restore', (id, file) => withTask(t('Ripristino backup'), (p) => backups.restore(id, file, { onProgress: p })));
   handle('backups:remove', (id, file) => backups.remove(id, file));
   handle('backups:openFolder', async (id) => { await fsp.mkdir(backups.dir(id), { recursive: true }); return shell.openPath(backups.dir(id)); });
 
@@ -424,16 +463,16 @@ function registerIpc() {
   handle('mods:remove', (id, file) => mods.remove(needServer(id), file));
   handle('mods:add', (id, files) => mods.addFiles(needServer(id), files));
   handle('mods:checkUpdates', (id) => mods.checkUpdates(needServer(id)));
-  handle('mods:applyUpdate', (id, upd) => withTask('Aggiorno mod', (p) => mods.applyUpdate(needServer(id), upd, p)));
+  handle('mods:applyUpdate', (id, upd) => withTask(t('Aggiorno mod'), (p) => mods.applyUpdate(needServer(id), upd, p)));
   handle('mods:disableClientOnly', (id) => mods.disableClientOnly(needServer(id)));
   handle('mr:search', (id, opts) => mods.modrinthSearch(needServer(id), opts));
   handle('mr:searchPacks', (opts) => mods.modrinthSearch({ type: 'fabric', mcVersion: '' }, Object.assign({ projectType: 'modpack' }, opts)));
   handle('mr:versions', (projectId, filter) => mods.modrinthVersions(projectId, filter || {}));
-  handle('mr:install', (id, projectId, versionId) => withTask('Installo da Modrinth', (p) => mods.installModrinth(needServer(id), projectId, { versionId, onProgress: p })));
+  handle('mr:install', (id, projectId, versionId) => withTask(t('Installo da Modrinth'), (p) => mods.installModrinth(needServer(id), projectId, { versionId, onProgress: p })));
   handle('cf:search', (id, opts) => mods.curseSearch(needServer(id), opts));
   handle('cf:searchPacks', (opts) => mods.curseSearch({ type: 'vanilla', mcVersion: '' }, Object.assign({ classKind: 'modpack' }, opts)));
   handle('cf:files', (modId, id) => mods.curseFiles(modId, id ? needServer(id) : null, { anyVersion: !id }));
-  handle('cf:install', (id, modId, fileId) => withTask('Installo da CurseForge', (p) => mods.installCurse(needServer(id), modId, { fileId, onProgress: p })));
+  handle('cf:install', (id, modId, fileId) => withTask(t('Installo da CurseForge'), (p) => mods.installCurse(needServer(id), modId, { fileId, onProgress: p })));
 
   // Modpack → nuovo server
   handle('pack:read', async (file) => (/\.mrpack$/i.test(file) ? mods.readMrpack(file) : mods.readCurseZip(file)));
@@ -445,15 +484,15 @@ function registerIpc() {
     const v = await getJson(`https://api.modrinth.com/v2/version/${encodeURIComponent(versionId)}`);
     const f = v.files.find((x) => x.primary) || v.files[0];
     const file = path.join(store.paths.cache, f.filename);
-    await withTask('Scarico il modpack', (p) => require('./util').download(f.url, file, { onProgress: (x) => p(x, `Scarico ${f.filename}…`) }));
+    await withTask(t('Scarico il modpack'), (p) => require('./util').download(f.url, file, { onProgress: (x) => p(x, t('Scarico {filename}…', { filename: f.filename })) }));
     const info = await mods.readMrpack(file);
     return createFromPack(file, info, opts);
   });
   handle('pack:createFromCurse', async (modId, fileId, opts) => {
     const f = (await getJson(`https://api.curseforge.com/v1/mods/${modId}/files/${fileId}`, { headers: mods.cfHeaders() })).data;
-    if (!f.downloadUrl) throw new Error('Il download di questo modpack è bloccato per le app esterne: scaricalo dal sito e importa lo zip.');
+    if (!f.downloadUrl) throw new Error(t('Il download di questo modpack è bloccato per le app esterne: scaricalo dal sito e importa lo zip.'));
     const file = path.join(store.paths.cache, f.fileName);
-    await withTask('Scarico il modpack', (p) => require('./util').download(f.downloadUrl, file, { onProgress: (x) => p(x, `Scarico ${f.fileName}…`) }));
+    await withTask(t('Scarico il modpack'), (p) => require('./util').download(f.downloadUrl, file, { onProgress: (x) => p(x, t('Scarico {fileName}…', { fileName: f.fileName })) }));
     const info = await mods.readCurseZip(file);
     return createFromPack(file, info, opts);
   });
@@ -466,19 +505,19 @@ function registerIpc() {
   handle('tunnel:cancelLink', () => playit.cancelLink());
   handle('tunnel:unlink', () => playit.unlink());
   handle('tunnel:refresh', () => playit.refresh());
-  handle('tunnel:install', () => withTask('Scarico playit.gg', (p) => playit.install(p)));
+  handle('tunnel:install', () => withTask(t('Scarico playit.gg'), (p) => playit.install(p)));
   handle('tunnel:setAddress', (addr) => playit.setPublicAddress(addr));
   // Crea (o riusa) il tunnel Minecraft per la porta del server e salva l'indirizzo nel server
   handle('tunnel:ensureForServer', async (id) => {
     const s = needServer(id);
     if (!playit.proc) await playit.start();
-    const t = await withTask(`Creo l'indirizzo pubblico per ${s.name}`, () => playit.ensureTunnel(Number(s.port) || 25565, `CraftDock ${s.name}`));
-    if (t.address) {
-      await store.update(id, { publicAddress: t.address });
-      if (!store.config.playit.publicAddress) await playit.setPublicAddress(t.address);
+    const tun = await withTask(t('Creo l\'indirizzo pubblico per {name}', { name: s.name }), () => playit.ensureTunnel(Number(s.port) || 25565, `CraftDock ${s.name}`));
+    if (tun.address) {
+      await store.update(id, { publicAddress: tun.address });
+      if (!store.config.playit.publicAddress) await playit.setPublicAddress(tun.address);
       send('servers:changed');
     }
-    return t;
+    return tun;
   });
   handle('net:info', () => networkInfo());
 }
@@ -490,8 +529,8 @@ function wireEvents() {
     send('server:status', id, status);
     const s = store.get(id);
     if (!s) return;
-    if (status === 'running') { backups.schedule(id); notify(s.name, 'Server online ✔'); }
-    if (status === 'crashed') notify(s.name, 'Il server si è arrestato in modo anomalo');
+    if (status === 'running') { backups.schedule(id); notify(s.name, t('Server online ✔')); }
+    if (status === 'crashed') notify(s.name, t('Il server si è arrestato in modo anomalo'));
     if (status === 'stopped' || status === 'crashed') backups.unschedule(id);
   });
   servers.on('players', (id, list) => send('server:players', id, list));
@@ -500,12 +539,12 @@ function wireEvents() {
   servers.on('stopped', async (id, { requested }) => {
     const s = store.get(id);
     if (s && s.backupOnStop && requested) {
-      withTask(`Backup di ${s.name} allo spegnimento`, (p) => backups.create(id, { auto: true, label: 'Allo spegnimento', onProgress: p })).catch(() => {});
+      withTask(t('Backup di {name} allo spegnimento', { name: s.name }), (p) => backups.create(id, { auto: true, label: 'Allo spegnimento', onProgress: p })).catch(() => {});
     }
   });
   backups.onAuto = (id, err) => {
     const s = store.get(id);
-    if (err) servers.info(id, 'Backup automatico fallito: ' + err.message);
+    if (err) servers.info(id, t('Backup automatico fallito: ') + err.message);
     else send('backups:changed', id, s && s.name);
   };
   playit.on('log', (l) => send('tunnel:log', l));
@@ -513,6 +552,37 @@ function wireEvents() {
   playit.on('claim', (claim) => send('tunnel:claim', claim));
   playit.on('address', (a) => send('tunnel:address', a));
   playit.on('tunnels', (st) => send('tunnel:tunnels', st));
+  updater.on('state', (st) => send('update:state', st));
+  scheduler.on('error', (id, entry, e) => logger.warn('Pianificazione', id, entry.kind, e.message));
+  scheduler.on('ran', (id, entry) => logger.info('Pianificazione eseguita', id, entry.kind, entry.time));
+  servers.on('status', (id, status) => logger.info('Server', id, '→', status));
+}
+
+/** Testo da copiare quando si chiede aiuto: versioni, sistema, server, tunnel e ultime righe del log. */
+async function diagnostics() {
+  const javas = await java.list().catch(() => []);
+  const lines = [
+    `CraftDock ${app.getVersion()}${app.isPackaged ? '' : ' (sviluppo)'}${process.env.PORTABLE_EXECUTABLE_DIR ? ' portatile' : ''}`,
+    `Sistema: ${os.type()} ${os.release()} ${os.arch()} · RAM ${Math.round(os.totalmem() / 1073741824)} GB · CPU ${os.cpus().length}x ${(os.cpus()[0] || {}).model || '?'}`,
+    `Electron ${process.versions.electron} · Node ${process.versions.node} · Chrome ${process.versions.chrome} · lingua ${i18n.getLang()} (${app.getLocale()})`,
+    `Cartella dati: ${store.config.root}`,
+    `Java trovati: ${javas.map((j) => `${j.version}${j.managed ? '*' : ''}`).join(', ') || 'nessuno'}`,
+    `playit: ${playit.status}${store.config.playit && store.config.playit.publicAddress ? ' · ' + store.config.playit.publicAddress : ''}`,
+    `Aggiornamenti: ${updater.state.available ? 'disponibile ' + updater.state.version : 'aggiornato'}${updater.state.error ? ' (errore: ' + updater.state.error + ')' : ''}`,
+    '',
+    `Server (${store.servers.length}):`,
+    ...store.servers.map((s) => {
+      const st = servers.state(s.id) || {};
+      return `- ${s.name}: ${s.type} ${s.mcVersion || '?'}${s.loaderVersion ? ' / ' + s.loaderVersion : ''} · ${s.ramMb} MB · porta ${s.port} · Java ${s.javaPath ? 'personalizzato' : 'auto ' + (s.javaMajor || '?')} · ${st.status || 'stopped'}${(s.schedules || []).length ? ' · ' + s.schedules.length + ' operazioni programmate' : ''}`;
+    }),
+    '',
+    'Ultime righe del log:',
+    ...logger.recent(80),
+  ];
+  // niente percorsi con il nome utente di Windows nel testo da condividere
+  const home = os.homedir();
+  const esc = home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return lines.join('\n').replace(new RegExp(`(?<=^|[\\s'"(])${esc}(?=[\\\\/]|$)`, 'gim'), '%USERPROFILE%');
 }
 
 // ---------- Finestra ----------
@@ -539,8 +609,8 @@ function createWindow() {
     e.preventDefault();
     const names = running.map((id) => store.get(id).name).join(', ');
     const r = await dialog.showMessageBox(win, {
-      type: 'warning', buttons: ['Ferma i server ed esci', 'Annulla'], defaultId: 0, cancelId: 1,
-      title: 'Server in esecuzione', message: `Sono accesi: ${names}`, detail: 'I server verranno fermati in modo sicuro (salvando i mondi) prima di chiudere.',
+      type: 'warning', buttons: [t('Ferma i server ed esci'), t('Annulla')], defaultId: 0, cancelId: 1,
+      title: t('Server in esecuzione'), message: t('Sono accesi: {names}', { names }), detail: t('I server verranno fermati in modo sicuro (salvando i mondi) prima di chiudere.'),
     });
     if (r.response !== 0) return;
     await shutdown();
@@ -555,31 +625,42 @@ async function shutdown() {
   app.quit();
 }
 
+function trayMenu() {
+  return Menu.buildFromTemplate([
+    { label: t('Apri CraftDock'), click: () => { win.show(); win.focus(); } },
+    { type: 'separator' },
+    { label: t('Esci (ferma i server)'), click: () => shutdown() },
+  ]);
+}
+
 function ensureTray() {
   if (tray) return;
   tray = new Tray(nativeImage.createFromPath(path.join(__dirname, '..', 'renderer', 'assets', 'icon-small.png')).resize({ width: 16, height: 16 }));
   tray.setToolTip('CraftDock');
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Apri CraftDock', click: () => { win.show(); win.focus(); } },
-    { type: 'separator' },
-    { label: 'Esci (ferma i server)', click: () => shutdown() },
-  ]));
+  tray.setContextMenu(trayMenu());
   tray.on('double-click', () => { win.show(); win.focus(); });
 }
 
 app.whenReady().then(async () => {
+  logger.init(path.join(app.getPath('userData'), 'logs'));
+  logger.info(`CraftDock ${app.getVersion()} · Electron ${process.versions.electron} · ${os.type()} ${os.release()} ${os.arch()}`);
   store = await new Store(app.getPath('userData')).load();
+  i18n.setLang(i18n.resolveLang(store.config.language, app.getLocale()));
   java = new JavaManager(store);
   servers = new ServerManager(store, java);
   worlds = new WorldManager(store);
   backups = new BackupManager(store, servers);
   mods = new ModManager(store);
   playit = new PlayitManager(store, { appVersion: app.getVersion(), openExternal: (url) => shell.openExternal(url) });
+  updater = new Updater({ currentVersion: app.getVersion(), isPackaged: app.isPackaged, store });
+  scheduler = new Scheduler({ store, servers, backups });
   Menu.setApplicationMenu(null);
   registerIpc();
   wireEvents();
   createWindow();
   if (store.config.playit && store.config.playit.autoStart) playit.start().catch(() => {});
+  scheduler.start();
+  if (!process.env.CRAFTDOCK_NO_UPDATE) updater.startAuto();
 });
 
 app.on('before-quit', (e) => {

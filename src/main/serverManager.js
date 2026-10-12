@@ -9,6 +9,7 @@ const { EventEmitter } = require('events');
 const { stripAnsi, exists, sleep } = require('./util');
 const properties = require('./properties');
 
+const { t } = require('../shared/i18n');
 let pidusage = null;
 try { pidusage = require('pidusage'); } catch (_) { /* statistiche non disponibili */ }
 
@@ -123,9 +124,9 @@ class ServerManager extends EventEmitter {
       r.players = new Set(m[3].split(',').map((s) => s.trim()).filter(Boolean));
       this.emit('players', id, [...r.players]);
     }
-    if (/FAILED TO BIND TO PORT/i.test(line)) this.info(id, 'La porta è già occupata: cambia porta nelle impostazioni del server o chiudi l\'altro programma.');
+    if (/FAILED TO BIND TO PORT/i.test(line)) this.info(id, t('La porta è già occupata: cambia porta nelle impostazioni del server o chiudi l\'altro programma.'));
     if (/You need to agree to the EULA/i.test(line)) this.emit('eula-required', id);
-    if (/UnsupportedClassVersionError/.test(line)) this.info(id, 'Versione di Java non compatibile: imposta "Java automatico" nelle impostazioni del server.');
+    if (/UnsupportedClassVersionError/.test(line)) this.info(id, t('Versione di Java non compatibile: imposta "Java automatico" nelle impostazioni del server.'));
   }
 
   /** Attende una riga di log che corrisponda a re (dopo aver eventualmente inviato un comando). */
@@ -146,7 +147,7 @@ class ServerManager extends EventEmitter {
 
   send(id, cmd, { silent = false } = {}) {
     const r = this.rt(id);
-    if (!r.proc || !r.proc.stdin.writable) throw new Error('Il server non è in esecuzione');
+    if (!r.proc || !r.proc.stdin.writable) throw new Error(t('Il server non è in esecuzione'));
     const clean = String(cmd).replace(/^\//, '').trim();
     if (!clean) return;
     if (!silent) this.pushLog(id, '> ' + clean, 'input');
@@ -181,11 +182,11 @@ class ServerManager extends EventEmitter {
 
   async start(id, { onProgress } = {}) {
     const server = this.store.get(id);
-    if (!server) throw new Error('Server non trovato');
+    if (!server) throw new Error(t('Server non trovato'));
     const r = this.rt(id);
-    if (r.proc) throw new Error('Il server è già avviato');
-    if (!server.launch) throw new Error('Il server non è installato. Usa "Reinstalla" nelle impostazioni.');
-    if (!(await this.eulaAccepted(server.dir))) { const e = new Error('EULA non accettata'); e.code = 'EULA'; throw e; }
+    if (r.proc) throw new Error(t('Il server è già avviato'));
+    if (!server.launch) throw new Error(t('Il server non è installato. Usa "Reinstalla" nelle impostazioni.'));
+    if (!(await this.eulaAccepted(server.dir))) { const e = new Error(t('EULA non accettata')); e.code = 'EULA'; throw e; }
 
     // Porta: allinea server.properties e controlla che sia libera
     const props = await properties.readFile(path.join(server.dir, 'server.properties'));
@@ -193,7 +194,7 @@ class ServerManager extends EventEmitter {
     if (String(props.map['server-port']) !== String(port)) await properties.update(path.join(server.dir, 'server.properties'), { 'server-port': String(port) });
     if (!(await isPortFree(port))) {
       const other = this.store.servers.find((s) => s.id !== id && Number(s.port) === port && this.isRunning(s.id));
-      throw new Error(other ? `La porta ${port} è usata dal server "${other.name}". Cambia porta in Impostazioni server.` : `La porta ${port} è occupata da un altro programma.`);
+      throw new Error(other ? t('La porta {port} è usata dal server "{name}". Cambia porta in Impostazioni server.', { port, name: other.name }) : t('La porta {port} è occupata da un altro programma.', { port }));
     }
 
     r.stopRequested = false;
@@ -206,7 +207,7 @@ class ServerManager extends EventEmitter {
       this.setStatus(id, 'stopped');
       throw e;
     }
-    this.info(id, `Avvio: ${path.basename(cmd.javaPath)} ${cmd.args.filter((a) => !a.startsWith('-XX')).join(' ')}`);
+    this.info(id, t('Avvio: {p0} {p1}', { p0: path.basename(cmd.javaPath), p1: cmd.args.filter((a) => !a.startsWith('-XX')).join(' ') }));
     // JAVA_TOOL_OPTIONS impostato da altri programmi può cambiare il comportamento della JVM: lo togliamo.
     const env = Object.assign({}, process.env);
     delete env.JAVA_TOOL_OPTIONS;
@@ -225,7 +226,7 @@ class ServerManager extends EventEmitter {
     };
     proc.stdout.on('data', onData);
     proc.stderr.on('data', onData);
-    proc.on('error', (err) => this.info(id, 'Errore processo: ' + err.message));
+    proc.on('error', (err) => this.info(id, t('Errore processo: ') + err.message));
     proc.on('exit', (code) => this.onExit(id, code));
 
     this.startStats(id);
@@ -260,13 +261,13 @@ class ServerManager extends EventEmitter {
     if (pidusage && pidusage.clear) try { pidusage.clear(); } catch (_) {}
     this.emit('players', id, []);
     const wasRequested = r.stopRequested;
-    this.info(id, `Server terminato (codice ${code}).`);
+    this.info(id, t('Server terminato (codice {code}).', { code }));
     if (r.restartRequested) {
       r.restartRequested = false;
       this.setStatus(id, 'stopped');
       this.emit('stopped', id, { requested: true });
       await sleep(1000);
-      this.start(id).catch((e) => this.info(id, 'Riavvio fallito: ' + e.message));
+      this.start(id).catch((e) => this.info(id, t('Riavvio fallito: ') + e.message));
       return;
     }
     if (wasRequested || code === 0) {
@@ -281,11 +282,11 @@ class ServerManager extends EventEmitter {
     r.crashTimes = r.crashTimes.filter((t) => now - t < 10 * 60e3);
     r.crashTimes.push(now);
     if (server && server.autoRestart && r.crashTimes.length <= 3 && r.startedAt && now - r.startedAt > 30e3) {
-      this.info(id, 'Crash rilevato: riavvio automatico tra 5 secondi…');
+      this.info(id, t('Crash rilevato: riavvio automatico tra 5 secondi…'));
       await sleep(5000);
-      if (!this.rt(id).proc) this.start(id).catch((e) => this.info(id, 'Riavvio automatico fallito: ' + e.message));
+      if (!this.rt(id).proc) this.start(id).catch((e) => this.info(id, t('Riavvio automatico fallito: ') + e.message));
     } else if (server && server.autoRestart && r.crashTimes.length > 3) {
-      this.info(id, 'Troppi crash in poco tempo: riavvio automatico sospeso. Controlla la console.');
+      this.info(id, t('Troppi crash in poco tempo: riavvio automatico sospeso. Controlla la console.'));
     }
   }
 
@@ -297,7 +298,7 @@ class ServerManager extends EventEmitter {
     const exited = new Promise((resolve) => r.proc.once('exit', resolve));
     try { this.send(id, 'stop'); } catch (_) {}
     const timer = setTimeout(() => {
-      if (r.proc) { this.info(id, 'Il server non risponde: chiusura forzata.'); r.proc.kill('SIGKILL'); }
+      if (r.proc) { this.info(id, t('Il server non risponde: chiusura forzata.')); r.proc.kill('SIGKILL'); }
     }, timeoutMs);
     await exited;
     clearTimeout(timer);

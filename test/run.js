@@ -38,6 +38,84 @@ function makeLevelDat(name, version) {
   return zlib.gzipSync(root);
 }
 
+test('i18n: traduzioni, segnaposto, plurali e dizionario coerente', () => {
+  const i18n = require('../src/shared/i18n');
+  const EN = require('../src/shared/en');
+  i18n.setLang('en');
+  assert.strictEqual(i18n.t('Avvia'), 'Start');
+  assert.strictEqual(i18n.t('porta {port}', { port: 25565 }), 'port 25565');
+  assert.strictEqual(i18n.tn(1, '{n} file aggiunto', '{n} file aggiunti'), '1 file added');
+  assert.strictEqual(i18n.tn(3, '{n} backup', '{n} backup'), '3 backups');
+  assert.strictEqual(i18n.tn(1, '{n} backup', '{n} backup'), '1 backup');
+  assert.strictEqual(i18n.t('frase che non esiste'), 'frase che non esiste');
+  i18n.setLang('it');
+  assert.strictEqual(i18n.t('Avvia'), 'Avvia');
+  assert.strictEqual(i18n.resolveLang('auto', 'it-IT'), 'it');
+  assert.strictEqual(i18n.resolveLang('auto', 'de-DE'), 'en');
+  assert.strictEqual(i18n.resolveLang('it', 'en-US'), 'it');
+  // ogni segnaposto della chiave italiana deve esserci anche nella traduzione
+  for (const [k, v] of Object.entries(EN)) {
+    const ph = (x) => (x.match(/\{\w+\}/g) || []).sort().join();
+    assert.strictEqual(ph(v), ph(k.replace(/\|1$/, '')), 'segnaposto diversi in: ' + k);
+  }
+});
+
+test('pianificazione: orari, giorni, avvisi e pulizia dei dati', async () => {
+  const { Scheduler, sanitize, dueAt } = require('../src/main/scheduler');
+  const clean = sanitize([{ kind: 'boh', time: '25:00', days: [1, 1, 9, '3'], command: '/say ciao' }, { kind: 'message', time: '07:05', message: 'x' }]);
+  assert.deepStrictEqual(clean[0].days, [1, 3]);
+  assert.strictEqual(clean[0].kind, 'restart');
+  assert.strictEqual(clean[0].time, '04:00');
+  assert.strictEqual(clean[0].command, 'say ciao');
+  const mon = new Date(2026, 9, 12, 4, 0, 10); // lunedì 12 ottobre 2026, 04:00
+  assert.ok(dueAt({ kind: 'restart', time: '04:00', days: [] }, mon));
+  assert.ok(dueAt({ kind: 'restart', time: '04:00', days: [1] }, mon));
+  assert.ok(!dueAt({ kind: 'restart', time: '04:00', days: [0, 6] }, mon));
+  assert.ok(!dueAt({ kind: 'restart', time: '04:00', days: [], enabled: false }, mon));
+  // esecuzione: riavvio con avvisi 5 e 1 minuto prima, una sola volta per minuto
+  const calls = [];
+  const servers = {
+    isRunning: () => true, info: () => {}, restart: async (id) => calls.push('restart ' + id),
+    send: (id, cmd) => calls.push(cmd), start: async () => calls.push('start'), stop: async () => calls.push('stop'),
+  };
+  const store = { servers: [{ id: 'a', schedules: [{ id: 'x', kind: 'restart', time: '04:00', days: [], warn: true }] }] };
+  const sch = new Scheduler({ store, servers, backups: { create: async () => calls.push('backup') } });
+  await sch.tick(new Date(2026, 9, 12, 3, 55, 5));
+  await sch.tick(new Date(2026, 9, 12, 3, 55, 25));
+  await sch.tick(new Date(2026, 9, 12, 3, 59, 5));
+  await sch.tick(new Date(2026, 9, 12, 4, 0, 5));
+  await sch.tick(new Date(2026, 9, 12, 4, 0, 25));
+  assert.strictEqual(calls.filter((c) => c.startsWith('say')).length, 2, calls.join(' | '));
+  assert.ok(/5/.test(calls[0]) && /1/.test(calls[1]));
+  assert.strictEqual(calls.filter((c) => c === 'restart a').length, 1);
+});
+
+test('aggiornamenti: legge l\'ultima release e capisce se è più nuova', async () => {
+  const http = require('http');
+  const srv = http.createServer((req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ tag_name: 'v1.4.0', published_at: '2026-10-12T10:00:00Z', assets: [{ name: 'CraftDock-Setup.exe', size: 1000, browser_download_url: 'http://x/CraftDock-Setup.exe' }, { name: 'CraftDock-Portable.exe', size: 900 }] }));
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  process.env.CRAFTDOCK_UPDATE_API = `http://127.0.0.1:${srv.address().port}/latest`;
+  delete require.cache[require.resolve('../src/main/updater')];
+  const { Updater } = require('../src/main/updater');
+  try {
+    const u = new Updater({ currentVersion: '1.1.2', isPackaged: true, store: { config: { checkUpdates: true } } });
+    const st = await u.check();
+    assert.strictEqual(st.available, true);
+    assert.strictEqual(st.version, '1.4.0');
+    assert.strictEqual(st.downloadUrl, 'http://x/CraftDock-Setup.exe');
+    const same = await new Updater({ currentVersion: '1.4.0', isPackaged: true, store: { config: {} } }).check();
+    assert.strictEqual(same.available, false);
+    const off = await new Updater({ currentVersion: '1.0.0', isPackaged: true, store: { config: { checkUpdates: false } } }).check();
+    assert.strictEqual(off.available, false, 'con il controllo disattivato non deve chiamare GitHub');
+  } finally {
+    srv.close();
+    delete process.env.CRAFTDOCK_UPDATE_API;
+  }
+});
+
 test('compareVersions gestisce il nuovo schema 26.x', () => {
   assert.strictEqual(util.compareVersions('1.21.11', '26.1'), -1);
   assert.strictEqual(util.compareVersions('26.1.1', '26.1'), 1);

@@ -8,6 +8,7 @@ const { execFile } = require('child_process');
 const { download, exists, httpRequest } = require('./util');
 const zip = require('./zip');
 
+const { t } = require('../shared/i18n');
 const IS_WIN = process.platform === 'win32';
 const JAVA_BIN = IS_WIN ? 'java.exe' : 'java';
 
@@ -115,21 +116,21 @@ class JavaManager {
     for (const imageType of ['jre', 'jdk']) {
       const url = `https://api.adoptium.net/v3/binary/latest/${major}/ga/${osName}/${arch}/${imageType}/hotspot/normal/eclipse?project=jdk`;
       try {
-        if (onProgress) onProgress(0, `Scarico Java ${major} (${imageType.toUpperCase()})…`);
-        await download(url, archive, { onProgress: (p) => onProgress && onProgress(p, `Scarico Java ${major}…`) });
+        if (onProgress) onProgress(0, t('Scarico Java {major} ({p1})…', { major, p1: imageType.toUpperCase() }));
+        await download(url, archive, { onProgress: (p) => onProgress && onProgress(p, t('Scarico Java {major}…', { major })) });
         lastErr = null;
         break;
       } catch (e) { lastErr = e; }
     }
-    if (lastErr) throw new Error(`Impossibile scaricare Java ${major}: ${lastErr.message}`);
-    if (onProgress) onProgress(null, `Estraggo Java ${major}…`);
+    if (lastErr) throw new Error(t('Impossibile scaricare Java {major}: {message}', { major, message: lastErr.message }));
+    if (onProgress) onProgress(null, t('Estraggo Java {major}…', { major }));
     await fsp.rm(target, { recursive: true, force: true });
     await fsp.mkdir(target, { recursive: true });
     if (IS_WIN) await zip.extract(archive, target);
     else await new Promise((res, rej) => execFile('tar', ['-xzf', archive, '-C', target], (e) => (e ? rej(e) : res())));
     await fsp.rm(archive, { force: true });
     const found = await findJavaIn(target, 3);
-    if (!found.length) throw new Error('Java scaricato ma java.exe non trovato');
+    if (!found.length) throw new Error(t('Java scaricato ma java.exe non trovato'));
     this.cache = null;
     return found[0];
   }

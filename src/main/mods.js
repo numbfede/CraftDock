@@ -8,6 +8,7 @@ const zip = require('./zip');
 const { MODRINTH_LOADER, CURSE_LOADER, TYPES } = require('./loaders');
 const CF_BUILTIN_KEY = require('./curseforge-key');
 
+const { t } = require('../shared/i18n');
 const MR = 'https://api.modrinth.com/v2';
 const CF = 'https://api.curseforge.com/v1';
 const CF_GAME = 432;
@@ -41,7 +42,7 @@ class ModManager {
   get cfEnabled() { return !!CF_BUILTIN_KEY; }
 
   cfHeaders() {
-    if (!this.cfKey) { const e = new Error('CurseForge non è ancora disponibile in CraftDock: arriverà con un prossimo aggiornamento. Nel frattempo usa Modrinth.'); e.code = 'CF_DISABLED'; throw e; }
+    if (!this.cfKey) { const e = new Error(t('CurseForge non è ancora disponibile in CraftDock: arriverà con un prossimo aggiornamento. Nel frattempo usa Modrinth.')); e.code = 'CF_DISABLED'; throw e; }
     return { 'x-api-key': this.cfKey, Accept: 'application/json' };
   }
 
@@ -80,13 +81,13 @@ class ModManager {
         Object.assign(meta, { id: ql.id, name: (ql.metadata && ql.metadata.name) || ql.id, version: ql.version, description: (ql.metadata && ql.metadata.description) || '', environment: (j.minecraft && j.minecraft.environment) || '*' });
         iconPath = ql.metadata && (typeof ql.metadata.icon === 'string' ? ql.metadata.icon : null);
       } else if (files['META-INF/neoforge.mods.toml'] || files['META-INF/mods.toml']) {
-        const t = files['META-INF/neoforge.mods.toml'] || files['META-INF/mods.toml'];
-        meta.id = tomlValue(t, 'modId');
-        meta.name = tomlValue(t, 'displayName') || meta.id;
-        meta.version = tomlValue(t, 'version');
-        meta.description = (tomlValue(t, 'description') || '').slice(0, 400);
-        iconPath = tomlValue(t, 'logoFile');
-        if (/clientSideOnly\s*=\s*true/.test(t)) meta.environment = 'client';
+        const toml = files['META-INF/neoforge.mods.toml'] || files['META-INF/mods.toml'];
+        meta.id = tomlValue(toml, 'modId');
+        meta.name = tomlValue(toml, 'displayName') || meta.id;
+        meta.version = tomlValue(toml, 'version');
+        meta.description = (tomlValue(toml, 'description') || '').slice(0, 400);
+        iconPath = tomlValue(toml, 'logoFile');
+        if (/clientSideOnly\s*=\s*true/.test(toml)) meta.environment = 'client';
         if (meta.version && meta.version.includes('${') && files['META-INF/MANIFEST.MF']) {
           const m = files['META-INF/MANIFEST.MF'].match(/Implementation-Version:\s*(\S+)/);
           meta.version = m ? m[1] : null;
@@ -205,7 +206,7 @@ class ModManager {
     }
     if (!version) {
       const p = await this.modrinthProject(projectId).catch(() => ({ title: projectId }));
-      throw new Error(`"${p.title}" non ha una versione per ${TYPES[server.type].name} ${server.mcVersion}`);
+      throw new Error(t('"{title}" non ha una versione per {p1} {mcVersion}', { title: p.title, p1: TYPES[server.type].name, mcVersion: server.mcVersion }));
     }
     const file = version.files.find((f) => f.primary) || version.files[0];
     const dir = this.dir(server);
@@ -216,8 +217,8 @@ class ModManager {
       await fsp.rm(path.join(dir, already[0] + '.disabled'), { force: true });
       delete track[already[0]];
     }
-    onProgress && onProgress(0, `Scarico ${file.filename}…`);
-    await download(file.url, path.join(dir, file.filename), { sha1: file.hashes && file.hashes.sha1, onProgress: (p) => onProgress && onProgress(p, `Scarico ${file.filename}…`) });
+    onProgress && onProgress(0, t('Scarico {filename}…', { filename: file.filename }));
+    await download(file.url, path.join(dir, file.filename), { sha1: file.hashes && file.hashes.sha1, onProgress: (p) => onProgress && onProgress(p, t('Scarico {filename}…', { filename: file.filename })) });
     const fresh = await this.track(server);
     if (already && already[0] !== file.filename) delete fresh[already[0]];
     fresh[file.filename] = { source: 'modrinth', projectId, versionId: version.id, version: version.version_number };
@@ -229,7 +230,7 @@ class ModManager {
       if (!depProject) continue;
       try {
         installed.push(...await this.installModrinth(server, depProject, { onProgress, _seen: seen }));
-      } catch (e) { installed.push(`⚠ dipendenza non installata: ${e.message}`); }
+      } catch (e) { installed.push(t('⚠ dipendenza non installata: {message}', { message: e.message })); }
     }
     return installed;
   }
@@ -305,17 +306,17 @@ class ModManager {
       const files = await this.curseFiles(modId, server);
       file = files.find((f) => f.releaseType === 1) || files[0];
     }
-    if (!file) throw new Error(`Nessun file CurseForge compatibile con ${server.mcVersion}`);
+    if (!file) throw new Error(t('Nessun file CurseForge compatibile con {mcVersion}', { mcVersion: server.mcVersion }));
     if (!file.downloadUrl) {
       const mod = (await getJson(`${CF}/mods/${modId}`, { headers: this.cfHeaders() })).data;
-      const e = new Error(`L'autore di "${mod.name}" non permette il download da app esterne. Scaricalo dal sito e trascinalo qui.`);
+      const e = new Error(t('L\'autore di "{name}" non permette il download da app esterne. Scaricalo dal sito e trascinalo qui.', { name: mod.name }));
       e.url = mod.links && mod.links.websiteUrl;
       throw e;
     }
     const dir = this.dir(server);
     if (already && already[0] !== file.fileName) await fsp.rm(path.join(dir, already[0]), { force: true });
-    onProgress && onProgress(0, `Scarico ${file.fileName}…`);
-    await download(file.downloadUrl, path.join(dir, file.fileName), { onProgress: (p) => onProgress && onProgress(p, `Scarico ${file.fileName}…`) });
+    onProgress && onProgress(0, t('Scarico {fileName}…', { fileName: file.fileName }));
+    await download(file.downloadUrl, path.join(dir, file.fileName), { onProgress: (p) => onProgress && onProgress(p, t('Scarico {fileName}…', { fileName: file.fileName })) });
     const fresh = await this.track(server);
     if (already) delete fresh[already[0]];
     fresh[file.fileName] = { source: 'curseforge', projectId: modId, fileId: file.id, version: file.displayName };
@@ -323,7 +324,7 @@ class ModManager {
     const installed = [file.fileName];
     for (const dep of file.dependencies || []) {
       if (dep.relationType !== 3) continue;
-      try { installed.push(...await this.installCurse(server, dep.modId, { onProgress, _seen: seen })); } catch (e) { installed.push(`⚠ dipendenza non installata: ${e.message}`); }
+      try { installed.push(...await this.installCurse(server, dep.modId, { onProgress, _seen: seen })); } catch (e) { installed.push(t('⚠ dipendenza non installata: {message}', { message: e.message })); }
     }
     return installed;
   }
@@ -333,7 +334,7 @@ class ModManager {
   /** Legge un .mrpack e restituisce le info necessarie per creare il server. */
   async readMrpack(file) {
     const buf = await zip.readEntry(file, 'modrinth.index.json');
-    if (!buf) throw new Error('File .mrpack non valido');
+    if (!buf) throw new Error(t('File .mrpack non valido'));
     const idx = JSON.parse(buf.toString('utf8'));
     const d = idx.dependencies || {};
     let type = 'vanilla'; let loaderVersion = null;
@@ -346,7 +347,7 @@ class ModManager {
 
   async readCurseZip(file) {
     const buf = await zip.readEntry(file, 'manifest.json');
-    if (!buf) throw new Error('Zip CurseForge non valido (manca manifest.json)');
+    if (!buf) throw new Error(t('Zip CurseForge non valido (manca manifest.json)'));
     const m = JSON.parse(buf.toString('utf8'));
     const loader = ((m.minecraft.modLoaders || []).find((l) => l.primary) || m.minecraft.modLoaders[0] || {}).id || '';
     const [lname, ...rest] = loader.split('-');
@@ -368,12 +369,12 @@ class ModManager {
         onProgress && onProgress(i / files.length, `Mod ${i}/${files.length}: ${path.basename(f.path)}`);
         try { await download(f.downloads[0], dest, { sha1: f.hashes && f.hashes.sha1 }); } catch (e) { warnings.push(`${path.basename(f.path)}: ${e.message}`); }
       }
-      onProgress && onProgress(null, 'Copio configurazioni del modpack…');
+      onProgress && onProgress(null, t('Copio configurazioni del modpack…'));
       await zip.extract(packFile, server.dir, { stripPrefix: 'overrides/' });
       await zip.extract(packFile, server.dir, { stripPrefix: 'server-overrides/' });
     } else {
       const ids = pack.files.filter((f) => f.required !== false).map((f) => f.fileID);
-      onProgress && onProgress(null, 'Recupero l\'elenco delle mod da CurseForge…');
+      onProgress && onProgress(null, t('Recupero l\'elenco delle mod da CurseForge…'));
       const res = await postJson(`${CF}/mods/files`, { fileIds: ids }, { headers: this.cfHeaders() });
       const files = res.data || [];
       const dir = path.join(server.dir, 'mods');
@@ -381,10 +382,10 @@ class ModManager {
       for (const f of files) {
         i++;
         onProgress && onProgress(i / files.length, `Mod ${i}/${files.length}: ${f.fileName}`);
-        if (!f.downloadUrl) { warnings.push(`${f.fileName}: download bloccato dall'autore, va scaricato a mano`); continue; }
+        if (!f.downloadUrl) { warnings.push(t('{fileName}: download bloccato dall\'autore, va scaricato a mano', { fileName: f.fileName })); continue; }
         try { await download(f.downloadUrl, path.join(dir, f.fileName)); } catch (e) { warnings.push(`${f.fileName}: ${e.message}`); }
       }
-      onProgress && onProgress(null, 'Copio configurazioni del modpack…');
+      onProgress && onProgress(null, t('Copio configurazioni del modpack…'));
       await zip.extract(packFile, server.dir, { stripPrefix: pack.overrides.replace(/\/?$/, '/') });
     }
     const disabled = await this.disableClientOnly(server);

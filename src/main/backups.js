@@ -8,6 +8,7 @@ const zip = require('./zip');
 const properties = require('./properties');
 const { BUKKIT_TYPES } = require('./worlds');
 
+const { t } = require('../shared/i18n');
 class BackupManager {
   constructor(store, servers) {
     this.store = store;
@@ -49,13 +50,13 @@ class BackupManager {
    */
   async create(id, { scope = 'world', label = '', auto = false, onProgress } = {}) {
     const server = this.store.get(id);
-    if (!server) throw new Error('Server non trovato');
-    if (this.busy.has(id)) throw new Error('C\'è già un backup in corso per questo server');
+    if (!server) throw new Error(t('Server non trovato'));
+    if (this.busy.has(id)) throw new Error(t('C\'è già un backup in corso per questo server'));
     this.busy.add(id);
     const running = this.servers.isRunning(id) && this.servers.rt(id).status === 'running';
     try {
       if (running) {
-        this.servers.info(id, 'Backup: salvataggio del mondo in corso…');
+        this.servers.info(id, t('Backup: salvataggio del mondo in corso…'));
         this.servers.send(id, 'save-off', { silent: true });
         await this.servers.sendAndWait(id, 'save-all flush', /Saved the game|Saved the world|ThreadedAnvilChunkStorage.*All dimensions are saved/i, 30000);
       }
@@ -77,8 +78,8 @@ class BackupManager {
         }
       }
       const exclude = scope === 'full' ? (rel) => /^(libraries|cache|\.fabric|versions|logs|crash-reports)(\/|$)/.test(rel) || /\.jar\.part$/.test(rel) : null;
-      onProgress && onProgress(null, 'Creo l\'archivio di backup…');
-      await zip.createZip(out, items, { exclude, onProgress: (n) => onProgress && onProgress(null, `Backup: ${n} file…`) });
+      onProgress && onProgress(null, t('Creo l\'archivio di backup…'));
+      await zip.createZip(out, items, { exclude, onProgress: (n) => onProgress && onProgress(null, t('Backup: {n} file…', { n })) });
       const list = (await this.list(id)).filter((x) => x.file !== file);
       list.unshift({ file, createdAt: Date.now(), scope, level, label, auto, mcVersion: server.mcVersion, type: server.type });
       await this.saveIndex(id, list);
@@ -87,7 +88,7 @@ class BackupManager {
     } finally {
       if (running && this.servers.isRunning(id)) {
         try { this.servers.send(id, 'save-on', { silent: true }); } catch (_) {}
-        this.servers.info(id, 'Backup completato.');
+        this.servers.info(id, t('Backup completato.'));
       }
       this.busy.delete(id);
     }
@@ -115,22 +116,22 @@ class BackupManager {
   /** Ripristina un backup (il server deve essere spento). Fa prima un backup di sicurezza dello stato attuale. */
   async restore(id, file, { onProgress } = {}) {
     const server = this.store.get(id);
-    if (this.servers.isRunning(id)) throw new Error('Spegni il server prima di ripristinare un backup');
+    if (this.servers.isRunning(id)) throw new Error(t('Spegni il server prima di ripristinare un backup'));
     const list = await this.list(id);
     const b = list.find((x) => x.file === file);
-    if (!b) throw new Error('Backup non trovato');
-    onProgress && onProgress(null, 'Backup di sicurezza dello stato attuale…');
+    if (!b) throw new Error(t('Backup non trovato'));
+    onProgress && onProgress(null, t('Backup di sicurezza dello stato attuale…'));
     try { await this.create(id, { scope: 'world', label: 'Prima del ripristino', auto: false }); } catch (_) { /* mondo inesistente: ok */ }
     const archive = path.join(this.dir(id), file);
     const entries = await zip.listEntries(archive);
     const tops = [...new Set(entries.map((e) => e.replace(/\\/g, '/').split('/')[0]).filter(Boolean))];
     if (b.scope !== 'full') {
-      for (const t of tops) {
-        const p = path.resolve(server.dir, t);
+      for (const top of tops) {
+        const p = path.resolve(server.dir, top);
         if (path.dirname(p) === path.resolve(server.dir)) await fsp.rm(p, { recursive: true, force: true });
       }
     }
-    onProgress && onProgress(null, 'Ripristino i file…');
+    onProgress && onProgress(null, t('Ripristino i file…'));
     await zip.extract(archive, server.dir);
     if (b.level) await properties.update(path.join(server.dir, 'server.properties'), { 'level-name': b.level });
     return true;
@@ -143,13 +144,13 @@ class BackupManager {
     const server = this.store.get(id);
     const minutes = Number(server && server.autoBackupMinutes) || 0;
     if (!minutes || !this.servers.isRunning(id)) return;
-    const t = setInterval(() => {
+    const timer = setInterval(() => {
       if (this.servers.rt(id).status !== 'running') return;
       this.create(id, { auto: true, label: 'Automatico' })
         .then(() => this.onAuto && this.onAuto(id, null))
         .catch((e) => this.onAuto && this.onAuto(id, e));
     }, minutes * 60e3);
-    this.timers.set(id, t);
+    this.timers.set(id, timer);
   }
 
   unschedule(id) {

@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const { Readable } = require('stream');
 const { pipeline } = require('stream/promises');
 
+const { t } = require('../shared/i18n');
 const USER_AGENT = 'numbfede/CraftDock/1.0.0 (+https://numbfede.com)';
 
 // In Electron usiamo net.fetch (stack di rete di Chromium, rispetta i proxy di sistema);
@@ -30,12 +31,12 @@ async function httpRequest(url, opts = {}) {
   } catch (e) {
     let host = url;
     try { host = new URL(url).host; } catch (_) {}
-    throw new Error(`Impossibile contattare ${host}: controlla la connessione a internet (${e.message})`);
+    throw new Error(t('Impossibile contattare {host}: controlla la connessione a internet ({message})', { host, message: e.message }));
   }
   if (!res.ok) {
     let body = '';
     try { body = (await res.text()).slice(0, 300); } catch (_) {}
-    const err = new Error(`HTTP ${res.status} su ${url}${body ? ' — ' + body : ''}`);
+    const err = new Error(t('HTTP {status} su {url}{p2}', { status: res.status, url, p2: body ? ' — ' + body : '' }));
     err.status = res.status;
     throw err;
   }
@@ -85,7 +86,7 @@ async function download(url, dest, { onProgress, headers, sha1 } = {}) {
     const got = hash.digest('hex');
     if (got.toLowerCase() !== String(sha1).toLowerCase()) {
       await fsp.rm(tmp, { force: true });
-      throw new Error(`Checksum non valido per ${path.basename(dest)}`);
+      throw new Error(t('Checksum non valido per {p0}', { p0: path.basename(dest) }));
     }
   }
   await fsp.rename(tmp, dest);

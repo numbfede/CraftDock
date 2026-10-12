@@ -3,6 +3,7 @@
 
 const zlib = require('zlib');
 
+const { t } = require('../shared/i18n');
 function parseNbt(buf) {
   let data = buf;
   if (buf[0] === 0x1f && buf[1] === 0x8b) data = zlib.gunzipSync(buf);
@@ -44,12 +45,12 @@ function parseNbt(buf) {
       }
       case 11: { const n = i32(); const arr = []; for (let i = 0; i < n; i++) arr.push(i32()); return arr; }
       case 12: { const n = i32(); const arr = []; for (let i = 0; i < n; i++) arr.push(i64()); return arr; }
-      default: throw new Error('Tag NBT sconosciuto: ' + type);
+      default: throw new Error(t('Tag NBT sconosciuto: ') + type);
     }
   }
 
   const rootType = u8();
-  if (rootType !== 10) throw new Error('level.dat non valido');
+  if (rootType !== 10) throw new Error(t('level.dat non valido'));
   str();
   return payload(10);
 }
