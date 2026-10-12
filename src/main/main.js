@@ -557,7 +557,7 @@ async function shutdown() {
 
 function ensureTray() {
   if (tray) return;
-  tray = new Tray(nativeImage.createFromPath(ICON).resize({ width: 16, height: 16 }));
+  tray = new Tray(nativeImage.createFromPath(path.join(__dirname, '..', 'renderer', 'assets', 'icon-small.png')).resize({ width: 16, height: 16 }));
   tray.setToolTip('CraftDock');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Apri CraftDock', click: () => { win.show(); win.focus(); } },

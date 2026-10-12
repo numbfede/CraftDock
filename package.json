@@ -1,7 +1,7 @@
 {
   "name": "craftdock",
   "productName": "CraftDock",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Organizzatore e launcher di server Minecraft locali per Windows, con tunnel senza port forwarding, mod, backup e pannello opzioni.",
   "author": "numbfede",
   "license": "MIT",

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#22201b"/><stop offset="1" stop-color="#0c0b09"/></linearGradient>
+ <radialGradient id="glow" cx="512" cy="590.0" r="420" gradientUnits="userSpaceOnUse" gradientTransform="translate(0 590.0) scale(1 .55) translate(0 -590.0)"><stop offset="0" stop-color="#5bd16f" stop-opacity=".55"/><stop offset=".55" stop-color="#5bd16f" stop-opacity=".08"/><stop offset="1" stop-color="#5bd16f" stop-opacity="0"/></radialGradient>
+ <radialGradient id="halo" cx="512" cy="180" r="560" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#f3efe7" stop-opacity=".07"/><stop offset="1" stop-color="#f3efe7" stop-opacity="0"/></radialGradient>
+ <linearGradient id="gTop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8cf29c"/><stop offset="1" stop-color="#6edc80"/></linearGradient>
+ <linearGradient id="gL" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#55cc69"/><stop offset="1" stop-color="#3a9e4c"/></linearGradient>
+ <linearGradient id="gR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2e8a40"/><stop offset="1" stop-color="#1f5f2b"/></linearGradient>
+ <linearGradient id="pad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#34312b"/><stop offset="1" stop-color="#25231e"/></linearGradient>
+</defs>
+<rect x="40" y="40" width="944" height="944" rx="228" fill="url(#bg)"/>
+<rect x="40" y="40" width="944" height="944" rx="228" fill="url(#halo)"/>
+<rect x="56" y="56" width="912" height="912" rx="212" fill="none" stroke="#f3efe7" stroke-opacity=".09" stroke-width="4"/>
+<rect x="41" y="41" width="942" height="942" rx="227" fill="none" stroke="#000" stroke-opacity=".6" stroke-width="2"/>
+<ellipse cx="512" cy="600.0" rx="430" ry="240" fill="url(#glow)"/>
+<polygon points="200.2,590.0 512.0,770.0 823.8,590.0 823.8,616.0 512.0,796.0 200.2,616.0" fill="#141310"/>
+<polygon points="512.0,410.0 823.8,590.0 512.0,770.0 200.2,590.0" fill="url(#pad)"/>
+<polygon points="512.0,410.0 823.8,590.0 512.0,770.0 200.2,590.0" fill="none" stroke="#f3efe7" stroke-opacity=".14" stroke-width="6" stroke-linejoin="round"/>
+<polygon points="512.0,446.0 761.4,590.0 512.0,734.0 262.6,590.0" fill="none" stroke="#74e486" stroke-opacity="0.35" stroke-width="6" stroke-linejoin="round"/>
+<polygon points="304.2,350.0 512.0,470.0 512.0,710.0 304.2,590.0" fill="url(#gL)"/>
+<polygon points="512.0,470.0 719.8,350.0 719.8,590.0 512.0,710.0" fill="url(#gR)"/>
+<polygon points="512.0,230.0 719.8,350.0 512.0,470.0 304.2,350.0" fill="#2b7a3a"/>
+<polygon points="312.5,350.0 408.1,294.8 503.7,350.0 408.1,405.2" fill="#8cf29c"/><polygon points="416.4,410.0 512.0,354.8 607.6,410.0 512.0,465.2" fill="#78e689"/><polygon points="416.4,290.0 512.0,234.8 607.6,290.0 512.0,345.2" fill="#6edc80"/><polygon points="520.3,350.0 615.9,294.8 711.5,350.0 615.9,405.2" fill="#83ec93"/>
+<polyline points="304.2,350.0 512.0,470.0 719.8,350.0" fill="none" stroke="#d9ffe0" stroke-opacity=".55" stroke-width="6" stroke-linejoin="round"/>
+<line x1="512" y1="470" x2="512" y2="710" stroke="#0c0b09" stroke-opacity=".25" stroke-width="6"/>
+</svg>
