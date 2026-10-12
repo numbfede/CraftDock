@@ -21,6 +21,15 @@ I tuoi amici entrano **senza port forwarding** grazie al tunnel playit.gg integr
 Tutte le versioni: [CHANGELOG.md](CHANGELOG.md) · pagina [Novità](https://craftdock.numbfede.com/novita).
 Firma del codice e avviso SmartScreen: [docs/FIRMA-CODICE.md](docs/FIRMA-CODICE.md).
 
+## macOS
+
+CraftDock gira anche su Mac (Apple Silicon e Intel, macOS 11+). Nello zip c'è `Installa CraftDock.command`:
+clic destro → Apri, copia l'app in Applicazioni e toglie il blocco dei file scaricati (l'app non ha ancora
+la firma Apple a pagamento). Per il tunnel playit.gg su Mac l'agente si compila una volta dalla pagina
+Connessione amici ("Prepara l'agente"), perché playit.gg non pubblica un file pronto per macOS.
+
+Dal codice: `Avvia.command` (serve Node.js 20+). Build: `npm run dist:mac`.
+
 ## Avvio dal codice
 
 1. Installa [Node.js](https://nodejs.org) 20 o superiore (versione LTS).

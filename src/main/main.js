@@ -506,6 +506,12 @@ function registerIpc() {
   handle('tunnel:unlink', () => playit.unlink());
   handle('tunnel:refresh', () => playit.refresh());
   handle('tunnel:install', () => withTask(t('Scarico playit.gg'), (p) => playit.install(p)));
+  handle('tunnel:buildMac', async () => { const f = await playit.buildScriptMac(); const err = await shell.openPath(f); if (err) throw new Error(err); return f; });
+  handle('tunnel:installFromFile', async () => {
+    const r = await dialog.showOpenDialog(win, { title: t('Scegli l\'agente playit (playitd)'), properties: ['openFile'] });
+    if (r.canceled || !r.filePaths[0]) return null;
+    return playit.installFromFile(r.filePaths[0]);
+  });
   handle('tunnel:setAddress', (addr) => playit.setPublicAddress(addr));
   // Crea (o riusa) il tunnel Minecraft per la porta del server e salva l'indirizzo nel server
   handle('tunnel:ensureForServer', async (id) => {
@@ -582,7 +588,7 @@ async function diagnostics() {
   // niente percorsi con il nome utente di Windows nel testo da condividere
   const home = os.homedir();
   const esc = home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return lines.join('\n').replace(new RegExp(`(?<=^|[\\s'"(])${esc}(?=[\\\\/]|$)`, 'gim'), '%USERPROFILE%');
+  return lines.join('\n').replace(new RegExp(`(?<=^|[\\s'"(])${esc}(?=[\\\\/]|$)`, 'gim'), process.platform === 'win32' ? '%USERPROFILE%' : '~');
 }
 
 // ---------- Finestra ----------
@@ -591,8 +597,11 @@ function createWindow() {
     width: 1360, height: 860, minWidth: 1040, minHeight: 680,
     backgroundColor: '#0c0b09', title: 'CraftDock', icon: ICON, show: false,
     autoHideMenuBar: true,
-    titleBarStyle: 'hidden',
-    titleBarOverlay: { color: '#0c0b09', symbolColor: '#f3efe7', height: 40 },
+    // Windows/Linux: barra del titolo scura con i pulsanti di sistema disegnati sopra.
+    // macOS: semafori integrati nella barra laterale.
+    ...(process.platform === 'darwin'
+      ? { titleBarStyle: 'hiddenInset', trafficLightPosition: { x: 18, y: 16 } }
+      : { titleBarStyle: 'hidden', titleBarOverlay: { color: '#0c0b09', symbolColor: '#f3efe7', height: 40 } }),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true, spellcheck: false },
   });
   win.once('ready-to-show', () => win.show());
@@ -654,7 +663,10 @@ app.whenReady().then(async () => {
   playit = new PlayitManager(store, { appVersion: app.getVersion(), openExternal: (url) => shell.openExternal(url) });
   updater = new Updater({ currentVersion: app.getVersion(), isPackaged: app.isPackaged, store });
   scheduler = new Scheduler({ store, servers, backups });
-  Menu.setApplicationMenu(null);
+  // Su macOS il menu dell'app serve per Cmd+C/V/Q e per la finestra; su Windows non si mostra.
+  Menu.setApplicationMenu(process.platform === 'darwin' ? Menu.buildFromTemplate([
+    { role: 'appMenu' }, { role: 'editMenu' }, { role: 'viewMenu' }, { role: 'windowMenu' },
+  ]) : null);
   registerIpc();
   wireEvents();
   createWindow();
@@ -666,4 +678,6 @@ app.whenReady().then(async () => {
 app.on('before-quit', (e) => {
   if (!quitting && servers && servers.runningIds().length) { e.preventDefault(); shutdown(); }
 });
-app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
+app.on('window-all-closed', () => app.quit());
+// macOS: clic sull'icona nel Dock con la finestra nascosta
+app.on('activate', () => { if (win && !win.isDestroyed()) { win.show(); win.focus(); } });

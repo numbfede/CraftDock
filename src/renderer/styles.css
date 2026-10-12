@@ -583,3 +583,7 @@ body.dragging #drop-overlay { display: grid; animation: fade .3s var(--ease) bot
 .sched-row .mc-toggle { margin-right: 4px; }
 input[type="time"].input { font-family: var(--mono); }
 input[type="time"]::-webkit-calendar-picker-indicator { filter: invert(.8); cursor: pointer; }
+
+/* ---------- macOS: spazio per i semafori della finestra ---------- */
+.platform-darwin .brand { padding-top: 44px; }
+.platform-darwin #tasks { left: 284px; }

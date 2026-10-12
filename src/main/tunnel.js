@@ -21,7 +21,16 @@ const { EventEmitter } = require('events');
 const { download, exists, stripAnsi, httpRequest, sleep } = require('./util');
 
 const { t } = require('../shared/i18n');
-const PLAYIT_URL = 'https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows-x86_64-signed.exe';
+const PLAYIT_BASE = 'https://github.com/playit-cloud/playit-agent/releases/latest/download/';
+// playit pubblica l'agente per Windows e Linux, non per macOS: lì va compilato dal codice sorgente
+// (vedi buildScriptMac) oppure scelto a mano con installFromFile.
+const PLAYIT_FILE = {
+  'win32-x64': 'playit-windows-x86_64-signed.exe',
+  'win32-arm64': 'playit-windows-x86_64-signed.exe',
+  'linux-x64': 'playit-linux-amd64',
+  'linux-arm64': 'playit-linux-aarch64',
+}[`${process.platform}-${process.arch}`];
+const PLAYIT_SOURCE_TAG = 'v1.0.10';
 const API = process.env.CRAFTDOCK_PLAYIT_API || 'https://api.playit.gg';
 const CLAIM_RE = /https:\/\/playit\.gg\/(?:claim|mc)\/[A-Za-z0-9_-]+/i;
 const ADDR_RE = /\b([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:joinmc\.link|ply\.gg|playit\.gg|playit\.plus))(?::(\d{2,5}))?\b/i;
@@ -85,7 +94,78 @@ class PlayitManager extends EventEmitter {
 
   async findBin() {
     if (await exists(this.localBin)) return this.localBin;
+    if (process.platform === 'darwin') {
+      // agente già compilato o installato a parte (Homebrew, cargo install)
+      for (const p of ['/opt/homebrew/bin/playitd', '/usr/local/bin/playitd', path.join(os.homedir(), '.cargo', 'bin', 'playitd')]) {
+        if (await exists(p)) return p;
+      }
+    }
     return null;
+  }
+
+  /** true se su questo sistema l'agente non si può scaricare già pronto. */
+  get needsBuild() { return !PLAYIT_FILE; }
+
+  /**
+   * macOS: scrive uno script per il Terminale che installa Rust (se manca), compila l'agente
+   * ufficiale di playit dal codice sorgente e lo mette dove CraftDock lo cerca.
+   */
+  async buildScriptMac() {
+    await fsp.mkdir(path.dirname(this.localBin), { recursive: true });
+    const file = path.join(this.store.paths.tools, 'Prepara-playit.command');
+    const dest = this.localBin.replace(/"/g, '\\"');
+    const tag = PLAYIT_SOURCE_TAG;
+    const script = `#!/bin/bash
+# CraftDock: compila l'agente playit.gg per macOS (playit non pubblica un file pronto per Mac).
+set -e
+echo "CraftDock · preparo l'agente playit.gg per macOS"
+echo "Ci vogliono alcuni minuti la prima volta."
+echo
+if ! xcode-select -p >/dev/null 2>&1; then
+  echo "Servono gli strumenti da riga di comando di Apple: si apre l'installazione."
+  xcode-select --install || true
+  echo "Quando hanno finito, fai di nuovo doppio clic su questo file."
+  read -n 1 -s -r -p "Premi un tasto per chiudere"
+  exit 1
+fi
+if ! command -v cargo >/dev/null 2>&1; then
+  if [ -f "$HOME/.cargo/env" ]; then source "$HOME/.cargo/env"; fi
+fi
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "Installo Rust (rustup.rs)…"
+  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+  source "$HOME/.cargo/env"
+fi
+WORK="$(mktemp -d)"
+cd "$WORK"
+echo "Scarico il codice di playit ${tag}…"
+curl -sSL "https://github.com/playit-cloud/playit-agent/archive/refs/tags/${tag}.tar.gz" | tar xz
+cd playit-agent-*
+echo "Compilo (può richiedere 5-10 minuti)…"
+cargo build --release -p playitd --bin playitd
+mkdir -p "$(dirname "${dest}")"
+cp target/release/playitd "${dest}"
+chmod +x "${dest}"
+cd /
+rm -rf "$WORK"
+echo
+echo "Fatto! Torna su CraftDock e premi \"Collega playit.gg\"."
+read -n 1 -s -r -p "Premi un tasto per chiudere"
+`;
+    await fsp.writeFile(file, script, { mode: 0o755 });
+    await fsp.chmod(file, 0o755);
+    return file;
+  }
+
+  /** Usa un agente playit scelto a mano (per esempio compilato su un altro Mac). */
+  async installFromFile(src) {
+    await fsp.mkdir(path.dirname(this.localBin), { recursive: true });
+    await fsp.copyFile(src, this.localBin);
+    await fsp.chmod(this.localBin, 0o755).catch(() => {});
+    if (process.platform === 'darwin') {
+      await new Promise((r) => require('child_process').execFile('xattr', ['-d', 'com.apple.quarantine', this.localBin], () => r()));
+    }
+    return this.localBin;
   }
 
   async readSecret() {
@@ -104,6 +184,7 @@ class PlayitManager extends EventEmitter {
   async info() {
     return {
       installed: !!(await this.findBin()),
+      needsBuild: this.needsBuild,
       linked: !!(await this.readSecret()),
       status: this.status,
       claim: this.claim,
@@ -130,7 +211,13 @@ class PlayitManager extends EventEmitter {
   setClaim(claim) { this.claim = claim; this.emit('claim', claim); }
 
   async install(onProgress) {
-    await download(PLAYIT_URL, this.localBin, { onProgress: (p) => onProgress && onProgress(p, t('Scarico l\'agente playit.gg…')) });
+    if (!PLAYIT_FILE) {
+      const e = new Error(t('Su macOS l\'agente playit.gg va preparato una volta: usa "Prepara l\'agente" nella pagina Connessione amici.'));
+      e.code = 'PLAYIT_BUILD';
+      throw e;
+    }
+    await download(PLAYIT_BASE + PLAYIT_FILE, this.localBin, { onProgress: (p) => onProgress && onProgress(p, t('Scarico l\'agente playit.gg…')) });
+    await fsp.chmod(this.localBin, 0o755).catch(() => {});
     return this.localBin;
   }
 

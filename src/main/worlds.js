@@ -62,13 +62,16 @@ class WorldManager {
   /** Cerca i mondi singleplayer dei launcher più diffusi su questo PC. */
   async scanLocalSaves() {
     const env = process.env;
-    const appdata = env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
     const home = os.homedir();
+    const mac = process.platform === 'darwin';
+    // macOS tiene tutto in ~/Library/Application Support e la cartella del gioco si chiama "minecraft"
+    const appdata = mac ? path.join(home, 'Library', 'Application Support') : (env.APPDATA || path.join(home, 'AppData', 'Roaming'));
     const sources = [
-      { launcher: 'Minecraft Launcher', dir: path.join(appdata, '.minecraft', 'saves') },
+      { launcher: 'Minecraft Launcher', dir: path.join(appdata, mac ? 'minecraft' : '.minecraft', 'saves') },
     ];
     const instanceRoots = [
       { launcher: 'CurseForge', root: path.join(home, 'curseforge', 'minecraft', 'Instances'), sub: 'saves' },
+      { launcher: 'CurseForge', root: path.join(home, 'Documents', 'curseforge', 'minecraft', 'Instances'), sub: 'saves' },
       { launcher: 'Modrinth App', root: path.join(appdata, 'ModrinthApp', 'profiles'), sub: 'saves' },
       { launcher: 'Modrinth App', root: path.join(appdata, 'com.modrinth.theseus', 'profiles'), sub: 'saves' },
       { launcher: 'Prism Launcher', root: path.join(appdata, 'PrismLauncher', 'instances'), sub: path.join('.minecraft', 'saves') },

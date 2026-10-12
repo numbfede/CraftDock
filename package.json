@@ -13,7 +13,9 @@
     "dist": "electron-builder --win nsis portable",
     "dist:dir": "electron-builder --win dir",
     "predist": "node scripts/inject-cf-key.js",
-    "predist:dir": "node scripts/inject-cf-key.js"
+    "predist:dir": "node scripts/inject-cf-key.js",
+    "dist:mac": "electron-builder --mac zip --arm64 --x64",
+    "predist:mac": "node scripts/inject-cf-key.js"
   },
   "dependencies": {
     "archiver": "^7.0.1",
@@ -57,7 +59,26 @@
       "artifactName": "CraftDock-Portable.exe"
     },
     "publish": null,
-    "copyright": "Copyright © 2026 numbfede"
+    "copyright": "Copyright © 2026 numbfede",
+    "mac": {
+      "category": "public.app-category.games",
+      "icon": "build/icon-mac.png",
+      "artifactName": "CraftDock-mac-${arch}.${ext}",
+      "darkModeSupport": true,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "minimumSystemVersion": "11.0",
+      "identity": null,
+      "target": [
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ]
+    }
   },
   "repository": {
     "type": "git",

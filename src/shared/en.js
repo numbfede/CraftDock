@@ -1043,6 +1043,20 @@
     "level.dat non valido": "Invalid level.dat",
   });
 
+  // ---------- mac ----------
+  add({
+    "Apri nel Finder:": "Open in Finder:",
+    "Su macOS l'agente playit.gg va preparato una volta: usa \"Prepara l'agente\" nella pagina Connessione amici.": "On macOS the playit.gg agent has to be prepared once: use \"Prepare the agent\" on the Friends connection page.",
+    "Scegli l'agente playit (playitd)": "Choose the playit agent (playitd)",
+    "Su Mac l'agente playit.gg va preparato una volta.": "On a Mac the playit.gg agent has to be prepared once.",
+    "playit.gg pubblica l'agente solo per Windows e Linux. \"Prepara l'agente\" apre il Terminale, installa gli strumenti che servono e compila l'agente ufficiale dal codice sorgente (5-10 minuti la prima volta). Poi torna qui: il resto funziona come su Windows.": "playit.gg only publishes the agent for Windows and Linux. \"Prepare the agent\" opens Terminal, installs the tools it needs and builds the official agent from source (5-10 minutes the first time). Then come back here: everything else works like on Windows.",
+    "Prepara l'agente": "Prepare the agent",
+    "Si è aperto il Terminale: quando ha finito torna qui": "Terminal opened: come back here when it's done",
+    "Ho già il file playitd…": "I already have playitd…",
+    "Agente playit pronto": "playit agent ready",
+    "Controlla di nuovo": "Check again",
+  });
+
   // @@END
 
   if (typeof module !== 'undefined' && module.exports) module.exports = EN;

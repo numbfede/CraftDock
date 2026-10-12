@@ -162,13 +162,15 @@ setInterval(() => {
 }, 5000);
 
 document.addEventListener('keydown', (e) => {
-  if (e.ctrlKey && e.key === 'n') { e.preventDefault(); openWizard(); }
-  if (e.ctrlKey && /^[1-9]$/.test(e.key) && App.view === 'server') { const tab = TABS[Number(e.key) - 1]; if (tab) { App.tab = tab.id; renderMain(); } }
+  const mod = e.ctrlKey || e.metaKey;
+  if (mod && e.key === 'n') { e.preventDefault(); openWizard(); }
+  if (mod && /^[1-9]$/.test(e.key) && App.view === 'server') { const tab = TABS[Number(e.key) - 1]; if (tab) { App.tab = tab.id; renderMain(); } }
 });
 
 (async function boot() {
   try {
     App.info = await api('app:info');
+    document.body.classList.add('platform-' + App.info.platform);
     const drop = document.querySelector('#drop-overlay div');
     drop.innerHTML = '';
     drop.append(t('Rilascia qui i file'), h('br'), h('small', t('mod .jar · mondi .zip · modpack .mrpack')));

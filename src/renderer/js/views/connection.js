@@ -35,6 +35,18 @@ function renderConnection(main) {
     body.innerHTML = '';
     const up = info.status === 'running' || info.status === 'starting';
 
+    // --- macOS: l'agente va compilato una volta ---
+    if (!info.installed && info.needsBuild) {
+      body.appendChild(h('.info-note', icon('info'), h('div',
+        h('strong', t('Su Mac l\'agente playit.gg va preparato una volta.')),
+        h('div.small', { style: { marginTop: '4px' } }, t('playit.gg pubblica l\'agente solo per Windows e Linux. "Prepara l\'agente" apre il Terminale, installa gli strumenti che servono e compila l\'agente ufficiale dal codice sorgente (5-10 minuti la prima volta). Poi torna qui: il resto funziona come su Windows.')))));
+      body.appendChild(h('.row.wrap', { style: { marginTop: '12px' } },
+        btn(t('Prepara l\'agente'), { cls: 'primary', icon: 'terminal', onclick: () => run(() => api('tunnel:buildMac'), t('Si è aperto il Terminale: quando ha finito torna qui')) }),
+        btn(t('Ho già il file playitd…'), { icon: 'folder', onclick: async () => { if (await run(() => api('tunnel:installFromFile'), t('Agente playit pronto'))) load(); } }),
+        btn(t('Controlla di nuovo'), { cls: 'ghost', icon: 'refresh', onclick: () => load() })));
+      return;
+    }
+
     // --- non collegato / collegamento in corso ---
     if (!info.linked) {
       const claim = info.claim;
@@ -154,6 +166,10 @@ function renderConnection(main) {
     logBox.textContent = i.log.join('\n') || t('Nessun messaggio.');
     logBox.scrollTop = logBox.scrollHeight;
     draw();
+    // macOS: mentre si compila l'agente nel Terminale, controlla ogni 10 secondi se è pronto
+    if (!i.installed && i.needsBuild && !App.hooks.playitPoll) {
+      App.hooks.playitPoll = setInterval(() => { if (App.view !== 'connection') { clearInterval(App.hooks.playitPoll); App.hooks.playitPoll = null; } else load(); }, 10000);
+    } else if (i.installed && App.hooks.playitPoll) { clearInterval(App.hooks.playitPoll); App.hooks.playitPoll = null; }
   };
   load();
 

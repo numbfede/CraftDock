@@ -258,7 +258,7 @@ function renderFiles(body, s) {
   ta.addEventListener('input', () => { save.disabled = !current; });
   const folders = [[t('Cartella server'), ''], ['mods', 'mods'], ['plugins', 'plugins'], ['config', 'config'], ['logs', 'logs'], ['crash-reports', 'crash-reports']];
   body.appendChild(h('.row.wrap', { style: { marginBottom: '12px' } },
-    h('span.muted.small', t('Apri in Esplora risorse:')),
+    h('span.muted.small', App.info.platform === 'darwin' ? t('Apri nel Finder:') : t('Apri in Esplora risorse:')),
     folders.map(([l, rel]) => btn(l, { cls: 'sm', icon: 'folder', onclick: () => run(() => api('servers:openFolder', s.id, rel)) }))));
   body.appendChild(h('.file-editor', list, h('.col', { style: { minHeight: 0 } }, h('.row', title, h('span.grow'), save), ta)));
   api('servers:listConfigs', s.id).then((files) => {

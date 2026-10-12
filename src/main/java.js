@@ -65,7 +65,12 @@ class JavaManager {
       }
       roots.push(path.join(os.homedir(), '.jdks'));
     } else {
-      roots.push('/usr/lib/jvm', '/opt/java', '/Library/Java/JavaVirtualMachines');
+      roots.push('/usr/lib/jvm', '/opt/java', '/Library/Java/JavaVirtualMachines', path.join(os.homedir(), 'Library', 'Java', 'JavaVirtualMachines'));
+      if (process.platform === 'darwin') {
+        roots.push(path.join(os.homedir(), 'Library', 'Application Support', 'minecraft', 'runtime'));
+        roots.push('/opt/homebrew/opt', '/usr/local/opt');
+      }
+      roots.push(path.join(os.homedir(), '.jdks'));
     }
     return [...new Set(roots)];
   }
@@ -129,7 +134,8 @@ class JavaManager {
     if (IS_WIN) await zip.extract(archive, target);
     else await new Promise((res, rej) => execFile('tar', ['-xzf', archive, '-C', target], (e) => (e ? rej(e) : res())));
     await fsp.rm(archive, { force: true });
-    const found = await findJavaIn(target, 3);
+    // su macOS il JDK è dentro jdk-xx/Contents/Home/bin
+    const found = await findJavaIn(target, 5);
     if (!found.length) throw new Error(t('Java scaricato ma java.exe non trovato'));
     this.cache = null;
     return found[0];

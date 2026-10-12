@@ -6,6 +6,7 @@ versione in `package.json` come testo della release su GitHub, e il sito la most
 ## 1.2.0 (2026-10-12)
 
 ### Italiano
+- **Versione per macOS** (Apple Silicon e Intel, macOS 11 o successivo). Su Mac l'agente playit.gg si prepara una volta dalla pagina Connessione amici.
 - **Interfaccia in inglese.** La lingua segue quella di Windows; si cambia in Impostazioni → Lingua.
 - **Aggiornamenti dall'app.** Quando esce una nuova versione compare un avviso: "Aggiorna ora" scarica l'installer, ferma i server in modo sicuro e riapre CraftDock aggiornato. Il controllo si può disattivare.
 - **Pianificazione.** Nuova scheda per ogni server: riavvii, backup, messaggi in chat, comandi, accensione e spegnimento a orario, nei giorni che scegli. Riavvio e spegnimento avvisano i giocatori 5 e 1 minuto prima.
@@ -14,6 +15,7 @@ versione in `package.json` come testo della release su GitHub, e il sito la most
 - Installer con nome fisso: il link di download del sito porta sempre all'ultima versione.
 
 ### English
+- **macOS version** (Apple Silicon and Intel, macOS 11 or later). On a Mac the playit.gg agent is prepared once from the Friends connection page.
 - **English interface.** The language follows Windows; change it in Settings → Language.
 - **In-app updates.** When a new version is out you get a notice: "Update now" downloads the installer, stops servers safely and reopens the updated CraftDock. The check can be turned off.
 - **Schedule.** New tab for every server: restarts, backups, chat messages, commands, start and stop at a set time, on the days you pick. Restarts and stops warn players 5 and 1 minute before.
