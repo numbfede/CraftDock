@@ -15,7 +15,27 @@ permissions:
   contents: write
 
 jobs:
+  mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build macOS (zip arm64 e x64, firma ad-hoc)
+        run: npm run dist:mac
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: craftdock-mac
+          path: dist/CraftDock-mac-*.zip
+
   windows:
+    needs: mac
     runs-on: windows-latest
     env:
       SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -73,6 +93,12 @@ jobs:
         shell: bash
         run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
 
+      - name: Scarica i file per macOS
+        uses: actions/download-artifact@v4
+        with:
+          name: craftdock-mac
+          path: dist
+
       - name: Note della versione da CHANGELOG.md
         run: node scripts/release-notes.js > release-notes.md
 
@@ -85,5 +111,7 @@ jobs:
           files: |
             dist/CraftDock-Setup.exe
             dist/CraftDock-Portable.exe
+            dist/CraftDock-mac-arm64.zip
+            dist/CraftDock-mac-x64.zip
           body_path: release-notes.md
           fail_on_unmatched_files: true
