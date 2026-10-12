@@ -1,55 +1,122 @@
 'use strict';
 // Connessione senza port forwarding: agente playit.gg integrato + rilevamento reti VPN (Tailscale, ZeroTier, Radmin, Hamachi).
+//
+// Da playit 1.0 il file Windows pubblicato (playit-windows-x86_64-signed.exe) è solo il demone
+// "playitd": non ha più --stdout né un'interfaccia per collegare l'account. Il collegamento
+// ("claim") lo fa normalmente playit-cli, che su Windows esiste solo dentro l'installer .msi.
+// Qui rifacciamo lo stesso flusso del CLI ufficiale direttamente con l'API di playit
+// (vedi packages/playit-cli/src/main.rs e packages/api_client nel repo playit-agent):
+//   1. POST /claim/setup    { code, agent_type, version }  → finché l'utente non approva nel browser
+//   2. POST /claim/exchange { code }                       → secret_key dell'agente
+//   3. avvio del demone con --secret-path <file> (log su stderr)
+//   4. POST /v1/agents/rundata (Authorization: Agent-Key …) → agent_id e tunnel con l'indirizzo pubblico
+//   5. POST /v1/tunnels/create → tunnel "minecraft-java" verso 127.0.0.1:<porta del server>
 
 const path = require('path');
 const os = require('os');
+const crypto = require('crypto');
+const fsp = require('fs/promises');
 const { spawn } = require('child_process');
 const { EventEmitter } = require('events');
-const { download, exists, stripAnsi } = require('./util');
+const { download, exists, stripAnsi, httpRequest, sleep } = require('./util');
 
 const PLAYIT_URL = 'https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-windows-x86_64-signed.exe';
+const API = process.env.CRAFTDOCK_PLAYIT_API || 'https://api.playit.gg';
 const CLAIM_RE = /https:\/\/playit\.gg\/(?:claim|mc)\/[A-Za-z0-9_-]+/i;
 const ADDR_RE = /\b([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)*\.(?:joinmc\.link|ply\.gg|playit\.gg|playit\.plus))(?::(\d{2,5}))?\b/i;
+const CLAIM_TIMEOUT_MS = 15 * 60e3;
+// Named pipe/socket nostro, così non entriamo in conflitto con un servizio playit installato a parte.
+const SOCKET_PATH = process.platform === 'win32' ? '\\\\.\\pipe\\craftdock-playitd' : path.join(os.tmpdir(), 'craftdock-playitd.sock');
+
+class PlayitApiError extends Error {
+  constructor(kind, data) {
+    super(typeof data === 'string' ? data : (data && (data.message || data.type)) || kind);
+    this.kind = kind; // 'fail' | 'error' | 'http'
+    this.data = data;
+  }
+}
+
+/** Chiamata all'API di playit: risposta { status: "success" | "fail" | "error", data }. */
+async function playitCall(pathname, body = {}, secret) {
+  const headers = { 'Content-Type': 'application/json', Accept: 'application/json' };
+  if (secret) headers.Authorization = `Agent-Key ${secret.trim()}`;
+  let res;
+  try {
+    res = await httpRequest(API + pathname, { method: 'POST', headers, body: JSON.stringify(body) });
+  } catch (e) {
+    // httpRequest lancia anche per 4xx: proviamo comunque a leggere il corpo JSON di playit
+    const m = String(e.message).match(/ — (\{.*\})$/s);
+    if (m) {
+      try { const j = JSON.parse(m[1]); throw new PlayitApiError(j.status || 'error', j.data); } catch (inner) { if (inner instanceof PlayitApiError) throw inner; }
+    }
+    throw new PlayitApiError('http', e.message);
+  }
+  const j = await res.json();
+  if (j.status === 'success') return j.data;
+  throw new PlayitApiError(j.status || 'error', j.data);
+}
+
+function claimCode() { return crypto.randomBytes(5).toString('hex'); }
 
 class PlayitManager extends EventEmitter {
-  constructor(store) {
+  constructor(store, { appVersion = '1.0.0', openExternal } = {}) {
     super();
     this.store = store;
+    this.appVersion = appVersion;
+    this.openExternal = openExternal;
     this.proc = null;
-    this.status = 'stopped';
-    this.claimUrl = null;
-    this.addresses = new Set();
+    this.status = 'stopped'; // stopped | linking | starting | running | error
+    this.claim = null; // { url, state }
+    this.claimAbort = null;
+    this.agentId = null;
+    this.tunnels = [];
+    this.pending = [];
+    this.notices = [];
     this.log = [];
+    this.pollTimer = null;
+    this.wantRunning = false;
+    this.restarts = 0;
   }
 
+  get dir() { return path.join(this.store.paths.tools, 'playit'); }
   get localBin() { return path.join(this.store.paths.tools, process.platform === 'win32' ? 'playit.exe' : 'playit'); }
+  get secretFile() { return path.join(this.dir, 'playit.toml'); }
 
   async findBin() {
-    const candidates = [this.localBin];
-    if (process.platform === 'win32') {
-      for (const pf of [process.env.ProgramFiles, 'C:\\Program Files', process.env['ProgramFiles(x86)']].filter(Boolean)) {
-        candidates.push(path.join(pf, 'playit_gg', 'bin', 'playit.exe'));
-      }
-      if (process.env.LOCALAPPDATA) candidates.push(path.join(process.env.LOCALAPPDATA, 'Microsoft', 'WinGet', 'Links', 'playit.exe'));
-    } else {
-      candidates.push('/usr/local/bin/playit', '/usr/bin/playit', '/opt/playit/playit');
-    }
-    for (const c of candidates) if (await exists(c)) return c;
+    if (await exists(this.localBin)) return this.localBin;
     return null;
+  }
+
+  async readSecret() {
+    try {
+      const t = await fsp.readFile(this.secretFile, 'utf8');
+      const m = t.match(/secret_key\s*=\s*"([0-9a-fA-F]+)"/) || t.trim().match(/^([0-9a-fA-F]{16,})$/);
+      return m ? m[1] : null;
+    } catch (_) { return null; }
+  }
+
+  async writeSecret(secret) {
+    await fsp.mkdir(this.dir, { recursive: true });
+    await fsp.writeFile(this.secretFile, `secret_key = "${secret}"\n`, 'utf8');
   }
 
   async info() {
     return {
       installed: !!(await this.findBin()),
+      linked: !!(await this.readSecret()),
       status: this.status,
-      claimUrl: this.claimUrl,
-      addresses: [...this.addresses],
+      claim: this.claim,
+      claimUrl: this.claim && this.claim.url,
+      agentId: this.agentId,
+      tunnels: this.tunnels,
+      pending: this.pending,
+      notices: this.notices,
       publicAddress: this.store.config.playit.publicAddress || '',
       log: this.log.slice(-300),
     };
   }
 
-  setStatus(s) { this.status = s; this.emit('status', s); }
+  setStatus(s) { if (this.status !== s) { this.status = s; this.emit('status', s); } }
 
   pushLog(line) {
     const clean = stripAnsi(line).trim();
@@ -57,36 +124,107 @@ class PlayitManager extends EventEmitter {
     this.log.push(clean);
     if (this.log.length > 1000) this.log.shift();
     this.emit('log', clean);
-    const claim = clean.match(CLAIM_RE);
-    if (claim && claim[0] !== this.claimUrl) { this.claimUrl = claim[0]; this.emit('claim', this.claimUrl); }
-    const addr = clean.match(ADDR_RE);
-    if (addr && !/^(api|www|discord|claim)\./i.test(addr[1])) {
-      const full = addr[2] ? `${addr[1]}:${addr[2]}` : addr[1];
-      if (!this.addresses.has(full)) {
-        this.addresses.add(full);
-        this.emit('address', full);
-        if (!this.store.config.playit.publicAddress) {
-          this.store.saveConfig({ playit: Object.assign({}, this.store.config.playit, { publicAddress: full }) }).catch(() => {});
-        }
-      }
-    }
-    if (/tunnel.*(running|ready|connected)|agent.*(connected|registered)/i.test(clean)) this.setStatus('running');
   }
+
+  setClaim(claim) { this.claim = claim; this.emit('claim', claim); }
 
   async install(onProgress) {
     await download(PLAYIT_URL, this.localBin, { onProgress: (p) => onProgress && onProgress(p, 'Scarico l\'agente playit.gg…') });
     return this.localBin;
   }
 
+  /**
+   * Collega CraftDock a un account playit.gg (flusso "claim" del CLI ufficiale).
+   * Apre il link nel browser e aspetta che l'utente approvi.
+   */
+  async link() {
+    if (this.claimAbort) return this.claim; // già in corso
+    const code = claimCode();
+    const url = `https://playit.gg/claim/${code}`;
+    const abort = { aborted: false };
+    this.claimAbort = abort;
+    this.setStatus('linking');
+    this.setClaim({ url, state: 'waiting-visit' });
+    this.pushLog(`Apri questo link per collegare CraftDock a playit.gg: ${url}`);
+    if (this.openExternal) this.openExternal(url);
+    const started = Date.now();
+    try {
+      // 1. aspetta l'approvazione nel browser
+      for (;;) {
+        if (abort.aborted) throw new Error('Collegamento annullato');
+        if (Date.now() - started > CLAIM_TIMEOUT_MS) throw new Error('Tempo scaduto: il collegamento non è stato approvato. Riprova.');
+        let state;
+        try {
+          state = await playitCall('/claim/setup', { code, agent_type: 'self-managed', version: `CraftDock ${this.appVersion}` });
+        } catch (e) {
+          if (e.kind === 'fail') throw new Error(`playit.gg ha rifiutato il codice (${e.message}). Riprova.`);
+          this.pushLog('Errore di rete con playit.gg, riprovo… ' + e.message);
+          await sleep(2500);
+          continue;
+        }
+        if (state === 'UserAccepted') break;
+        if (state === 'UserRejected') throw new Error('Collegamento rifiutato nel browser.');
+        const next = state === 'WaitingForUser' ? 'waiting-approval' : 'waiting-visit';
+        if (!this.claim || this.claim.state !== next) this.setClaim({ url, state: next });
+        await sleep(1500);
+      }
+      // 2. scambia il codice con la chiave dell'agente
+      this.setClaim({ url, state: 'exchanging' });
+      let secret = null;
+      for (let i = 0; i < 60 && !secret; i++) {
+        if (abort.aborted) throw new Error('Collegamento annullato');
+        try {
+          const r = await playitCall('/claim/exchange', { code });
+          secret = r && r.secret_key;
+        } catch (e) {
+          if (e.kind === 'fail' && /Rejected|Expired|NotFound/.test(e.message)) throw new Error(`Collegamento non riuscito (${e.message}).`);
+          await sleep(2000);
+        }
+      }
+      if (!secret) throw new Error('playit.gg non ha restituito la chiave. Riprova.');
+      await this.writeSecret(secret);
+      this.setClaim({ url, state: 'done' });
+      this.pushLog('Account playit.gg collegato.');
+      return this.claim;
+    } catch (e) {
+      this.setClaim({ url, state: 'error', error: e.message });
+      this.pushLog(e.message);
+      this.setStatus('error');
+      throw e;
+    } finally {
+      this.claimAbort = null;
+    }
+  }
+
+  cancelLink() {
+    if (this.claimAbort) this.claimAbort.aborted = true;
+  }
+
+  async unlink() {
+    this.stop();
+    await fsp.rm(this.secretFile, { force: true });
+    this.agentId = null;
+    this.tunnels = [];
+    this.pending = [];
+    this.emit('tunnels', this.tunnelState());
+    this.setClaim(null);
+  }
+
   async start() {
     if (this.proc) return;
     let bin = await this.findBin();
-    if (!bin) bin = await this.install();
-    this.claimUrl = null;
+    if (!bin) { this.pushLog('Scarico l\'agente playit.gg…'); bin = await this.install(); }
+    if (!(await this.readSecret())) await this.link();
+    const secret = await this.readSecret();
+    if (!secret) throw new Error('Collega prima l\'account playit.gg');
+
+    this.wantRunning = true;
     this.setStatus('starting');
-    const startedAt = Date.now();
-    const p = spawn(bin, ['--stdout'], { windowsHide: true, cwd: path.dirname(bin) });
+    const args = ['--secret-path', this.secretFile, '--socket-path', SOCKET_PATH];
+    this.pushLog('Avvio agente playit.gg…');
+    const p = spawn(bin, args, { windowsHide: true, cwd: this.dir, env: Object.assign({}, process.env, { RUST_LOG: process.env.RUST_LOG || 'info' }) });
     this.proc = p;
+    const startedAt = Date.now();
     let partial = '';
     const onData = (d) => {
       partial += d.toString('utf8');
@@ -96,32 +234,122 @@ class PlayitManager extends EventEmitter {
     };
     p.stdout.on('data', onData);
     p.stderr.on('data', onData);
-    p.on('error', (e) => { this.pushLog('Errore: ' + e.message); });
+    p.on('error', (e) => this.pushLog('Errore: ' + e.message));
     p.on('exit', (code) => {
       this.proc = null;
+      clearInterval(this.pollTimer);
       this.pushLog(`Agente playit terminato (codice ${code}).`);
-      if (code !== 0 && Date.now() - startedAt < 5000) {
-        this.pushLog('L\'agente non è partito in modalità integrata: usa "Apri finestra playit" per completare la configurazione.');
-        this.setStatus('error');
-      } else this.setStatus('stopped');
+      // Se l'utente non l'ha fermato (es. internet assente), riprova con attese crescenti.
+      if (this.wantRunning && this.restarts < 6) {
+        const wait = Math.min(60, 5 * 2 ** this.restarts);
+        this.restarts++;
+        this.setStatus('starting');
+        this.pushLog(`Riprovo ad avviare l'agente tra ${wait} secondi…`);
+        this.restartTimer = setTimeout(() => { if (this.wantRunning) this.start().catch((e) => this.pushLog(e.message)); }, wait * 1000);
+        return;
+      }
+      this.setStatus(code !== 0 && Date.now() - startedAt < 5000 ? 'error' : 'stopped');
     });
-    setTimeout(() => { if (this.proc && this.status === 'starting') this.setStatus('running'); }, 8000);
+
+    // stato reale dei tunnel dall'API
+    await sleep(1500);
+    await this.refresh().catch((e) => this.pushLog('Impossibile leggere i tunnel: ' + e.message));
+    clearInterval(this.pollTimer);
+    this.pollTimer = setInterval(() => this.refresh().catch(() => {}), 10000);
   }
 
   stop() {
+    this.wantRunning = false;
+    clearTimeout(this.restartTimer);
+    this.cancelLink();
+    clearInterval(this.pollTimer);
     if (this.proc) { this.proc.kill(); this.proc = null; }
     this.setStatus('stopped');
   }
 
-  /** Apre l'agente in una finestra di console separata (utile per la prima configurazione/claim). */
-  async openConsole() {
-    let bin = await this.findBin();
-    if (!bin) bin = await this.install();
-    if (process.platform === 'win32') {
-      spawn('cmd.exe', ['/c', 'start', '"playit.gg"', bin], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
-    } else {
-      spawn(bin, [], { detached: true, stdio: 'ignore' }).unref();
+  tunnelState() {
+    return { agentId: this.agentId, tunnels: this.tunnels, pending: this.pending, notices: this.notices };
+  }
+
+  /** Legge agent_id, tunnel e avvisi dell'agente. */
+  async refresh() {
+    const secret = await this.readSecret();
+    if (!secret) return this.tunnelState();
+    let data;
+    try {
+      data = await playitCall('/v1/agents/rundata', {}, secret);
+    } catch (e) {
+      if (e.kind === 'error' && /auth|key|secret|unauthor/i.test(JSON.stringify(e.data || e.message))) {
+        this.pushLog('La chiave playit.gg non è più valida: collega di nuovo l\'account.');
+        await fsp.rm(this.secretFile, { force: true });
+        this.stop();
+      }
+      throw e;
     }
+    this.agentId = data.agent_id;
+    this.tunnels = (data.tunnels || []).map((t) => {
+      const fields = (t.agent_config && t.agent_config.fields) || [];
+      const f = (n) => (fields.find((x) => x.name === n) || {}).value;
+      return {
+        id: t.id, name: t.name, address: t.display_address, type: t.tunnel_type, typeLabel: t.tunnel_type_display,
+        localIp: f('local_ip') || '127.0.0.1', localPort: Number(f('local_port')) || null, disabled: t.disabled_reason || null,
+      };
+    });
+    this.pending = (data.pending || []).map((t) => ({ id: t.id, name: t.name, status: t.status_msg }));
+    this.notices = (data.notices || []).map((n) => ({ priority: n.priority, message: n.message, link: n.resolve_link }));
+    if (this.proc && this.status === 'starting') { this.setStatus('running'); this.restarts = 0; }
+    this.emit('tunnels', this.tunnelState());
+    for (const t of this.tunnels) if (t.address) this.emit('address', t.address);
+    return this.tunnelState();
+  }
+
+  /**
+   * Garantisce un tunnel Minecraft Java verso la porta locale indicata e ne restituisce l'indirizzo.
+   * Se esiste già (stessa porta) lo riusa; altrimenti lo crea tramite l'API.
+   */
+  async ensureTunnel(port, name) {
+    const secret = await this.readSecret();
+    if (!secret) throw new Error('Collega prima l\'account playit.gg');
+    await this.refresh();
+    const existing = this.tunnels.find((t) => t.localPort === Number(port) && (!t.type || /minecraft-java/i.test(t.type)));
+    if (existing && existing.address) return existing;
+    if (!existing) {
+      const safeName = String(name || `CraftDock ${port}`).replace(/[^\x20-\x7E]/g, '').slice(0, 40) || `CraftDock ${port}`;
+      try {
+        await playitCall('/v1/tunnels/create', {
+          ports: { type: 'tunnel-type', details: 'minecraft-java' },
+          origin: {
+            type: 'agent',
+            data: {
+              agent_id: this.agentId,
+              config: { fields: [{ name: 'local_ip', value: '127.0.0.1' }, { name: 'local_port', value: String(port) }] },
+            },
+          },
+          enabled: true,
+          alloc: null,
+          name: safeName,
+          firewall_id: null,
+        }, secret);
+        this.pushLog(`Creato il tunnel "${safeName}" verso 127.0.0.1:${port}.`);
+      } catch (e) {
+        const hint = {
+          RequiresVerifiedAccount: 'playit.gg chiede di verificare l\'account (email) prima di creare tunnel.',
+          AgentVersionTooOld: 'La versione dell\'agente è troppo vecchia: CraftDock la riscaricherà.',
+          RequiresPlayitPremium: 'Questo tipo di tunnel richiede playit Premium.',
+        }[e.message];
+        throw new Error(hint || `playit.gg non ha creato il tunnel: ${e.message}`);
+      }
+    }
+    // l'indirizzo viene assegnato dopo qualche secondo
+    for (let i = 0; i < 15; i++) {
+      await sleep(2000);
+      await this.refresh().catch(() => {});
+      const t = this.tunnels.find((x) => x.localPort === Number(port));
+      if (t && t.address) return t;
+    }
+    const t = this.tunnels.find((x) => x.localPort === Number(port));
+    if (t) return t;
+    throw new Error('Il tunnel è stato creato ma l\'indirizzo non è ancora pronto: riprova tra poco.');
   }
 
   async setPublicAddress(addr) {
@@ -151,4 +379,4 @@ function networkInfo() {
   return out;
 }
 
-module.exports = { PlayitManager, networkInfo, CLAIM_RE, ADDR_RE };
+module.exports = { PlayitManager, networkInfo, playitCall, claimCode, CLAIM_RE, ADDR_RE, SOCKET_PATH };

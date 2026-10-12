@@ -203,6 +203,69 @@ test('mod: metadati jar Fabric e Forge + disattivazione client-only', async () =
   }
 });
 
+test('playit: collegamento account, lettura tunnel e creazione automatica (API finta)', async () => {
+  const http = require('http');
+  const calls = [];
+  let setupCalls = 0;
+  const tunnels = [];
+  const srv = http.createServer((req, res) => {
+    let body = '';
+    req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      const json = body ? JSON.parse(body) : {};
+      calls.push({ path: req.url, auth: req.headers.authorization || null, body: json });
+      const ok = (data) => { res.setHeader('Content-Type', 'application/json'); res.end(JSON.stringify({ status: 'success', data })); };
+      if (req.url === '/claim/setup') { setupCalls++; return ok(setupCalls < 2 ? 'WaitingForUserVisit' : setupCalls < 3 ? 'WaitingForUser' : 'UserAccepted'); }
+      if (req.url === '/claim/exchange') return ok({ secret_key: 'abcdef0123456789abcdef0123456789' });
+      if (req.url === '/v1/agents/rundata') {
+        return ok({ agent_id: '11111111-2222-3333-4444-555555555555', tunnels, pending: [], notices: [], permissions: { is_self_managed: true, has_premium: false, account_status: 'Verified' } });
+      }
+      if (req.url === '/v1/tunnels/create') {
+        tunnels.push({ id: 't1', internal_id: 1, name: json.name, display_address: 'happy-creeper.gl.joinmc.link', port_type: 'tcp', port_count: 1, tunnel_type: 'minecraft-java', tunnel_type_display: 'Minecraft Java', agent_config: json.origin.data.config, disabled_reason: null });
+        return ok({ id: 't1' });
+      }
+      res.statusCode = 404; res.end('{}');
+    });
+  });
+  await new Promise((r) => srv.listen(0, '127.0.0.1', r));
+  process.env.CRAFTDOCK_PLAYIT_API = `http://127.0.0.1:${srv.address().port}`;
+  delete require.cache[require.resolve('../src/main/tunnel')];
+  const { PlayitManager } = require('../src/main/tunnel');
+  const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'craftdock-playit-'));
+  try {
+    const opened = [];
+    const store = { paths: { tools: tmp }, config: { playit: {} }, saveConfig: async () => {} };
+    const pm = new PlayitManager(store, { appVersion: '1.0.1', openExternal: (u) => opened.push(u) });
+    const states = [];
+    pm.on('claim', (c) => c && states.push(c.state));
+    await pm.link();
+    assert.match(opened[0], /^https:\/\/playit\.gg\/claim\/[0-9a-f]{10}$/);
+    assert.deepStrictEqual([...new Set(states)], ['waiting-visit', 'waiting-approval', 'exchanging', 'done']);
+    assert.strictEqual(await pm.readSecret(), 'abcdef0123456789abcdef0123456789');
+    assert.match(await fsp.readFile(path.join(tmp, 'playit', 'playit.toml'), 'utf8'), /^secret_key = "abcdef/);
+    const setup = calls.find((c) => c.path === '/claim/setup');
+    assert.strictEqual(setup.body.agent_type, 'self-managed');
+    assert.strictEqual(setup.body.version, 'CraftDock 1.0.1');
+
+    const t = await pm.ensureTunnel(25570, 'CraftDock Survival è bello');
+    assert.strictEqual(t.address, 'happy-creeper.gl.joinmc.link');
+    assert.strictEqual(t.localPort, 25570);
+    const create = calls.find((c) => c.path === '/v1/tunnels/create');
+    assert.strictEqual(create.auth, 'Agent-Key abcdef0123456789abcdef0123456789');
+    assert.deepStrictEqual(create.body.ports, { type: 'tunnel-type', details: 'minecraft-java' });
+    assert.strictEqual(create.body.origin.data.agent_id, '11111111-2222-3333-4444-555555555555');
+    assert.deepStrictEqual(create.body.origin.data.config.fields, [{ name: 'local_ip', value: '127.0.0.1' }, { name: 'local_port', value: '25570' }]);
+    assert.strictEqual(create.body.name, 'CraftDock Survival  bello');
+    // seconda volta: riusa il tunnel esistente, nessuna nuova creazione
+    await pm.ensureTunnel(25570, 'x');
+    assert.strictEqual(calls.filter((c) => c.path === '/v1/tunnels/create').length, 1);
+  } finally {
+    srv.close();
+    delete process.env.CRAFTDOCK_PLAYIT_API;
+    await fsp.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 (async () => {
   for (const t of tests) {
     try { await t.fn(); passed++; console.log('  ✓ ' + t.name); } catch (e) { console.error('  ✗ ' + t.name + '\n    ' + (e.stack || e)); process.exitCode = 1; }

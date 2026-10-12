@@ -1,66 +1,123 @@
 'use strict';
-/* Connessione amici senza port forwarding: tunnel playit.gg integrato + alternative VPN/LAN. */
+/* Connessione amici senza port forwarding: tunnel playit.gg integrato (collegamento e tunnel automatici) + alternative VPN/LAN. */
+
+const CLAIM_TEXT = {
+  'waiting-visit': 'Si è aperta una pagina di playit.gg nel browser: accedi o crea un account gratuito.',
+  'waiting-approval': 'Ora conferma nel browser per autorizzare CraftDock.',
+  exchanging: 'Approvato! Completo il collegamento…',
+  done: 'Account collegato.',
+};
 
 function renderConnection(main) {
   const page = h('.page', h('h1.page-title.green', 'Connessione amici'));
   page.appendChild(h('p.muted', { style: { marginTop: '-8px', maxWidth: '820px' } },
-    'Il tuo router blocca le connessioni in entrata, per questo di solito serve il port forwarding. Con un tunnel il PC apre lui la connessione verso un server esterno, che inoltra i giocatori al tuo Minecraft: nessuna configurazione del router, il tuo IP resta nascosto.'));
+    'Il router di casa blocca le connessioni in entrata, per questo di solito serve il port forwarding. Con il tunnel di playit.gg è il tuo PC a collegarsi verso l\'esterno e gli amici entrano da lì: niente configurazione del router, il tuo IP resta nascosto.'));
 
+  let info = null;
   const statusPill = h('span.status-pill');
-  const claimBox = h('div');
+  const body = h('div');
   const logBox = h('.log-box');
-  const detected = h('.row.wrap');
-  const addr = h('input.input', { placeholder: 'es. nome-casuale.gl.joinmc.link', style: { fontFamily: 'var(--mono)' } });
-  const startBtn = btn('Avvia tunnel', { cls: 'primary', icon: 'play' });
-  const stopBtn = btn('Ferma', { cls: 'danger', icon: 'stop' });
-  const ports = App.servers.map((s) => `${s.name}: 127.0.0.1:${s.port}`).join(' · ') || 'crea prima un server';
+  const actions = h('.act');
 
   const setStatus = (st) => {
-    statusPill.className = 'status-pill ' + (st === 'running' ? 'running' : st === 'starting' ? 'starting' : st === 'error' ? 'error' : '');
-    statusPill.textContent = { running: 'Attivo', starting: 'Avvio…', error: 'Da configurare', stopped: 'Spento' }[st] || st;
-    startBtn.classList.toggle('hidden', st === 'running' || st === 'starting');
-    stopBtn.classList.toggle('hidden', !(st === 'running' || st === 'starting'));
-  };
-  const showClaim = (url) => {
-    claimBox.innerHTML = '';
-    if (!url) return;
-    claimBox.appendChild(h('.info-note', icon('link'), h('div.grow', h('strong', 'Collega l\'agente al tuo account playit.gg'), h('div.small', 'Apri il link, accedi o registrati gratis e conferma: il tunnel verrà attivato.')),
-      btn('Apri link', { cls: 'sm blue', icon: 'external', onclick: () => api('shell:openExternal', url) })));
-  };
-  const addDetected = (a) => {
-    if ([...detected.children].some((c) => c.dataset.a === a)) return;
-    detected.appendChild(h('span.tag.green', { dataset: { a }, style: { cursor: 'pointer', padding: '5px 10px' }, title: 'Usa questo indirizzo', onclick: async () => { addr.value = a; await saveAddr(); } }, '✓ ' + a));
-  };
-  const saveAddr = async () => {
-    await run(() => api('tunnel:setAddress', addr.value.trim()), 'Indirizzo salvato: lo trovi in ogni server');
-    App.info.config.playit = Object.assign({}, App.info.config.playit, { publicAddress: addr.value.trim() });
+    const map = { running: ['running', 'Attivo'], starting: ['starting', 'Avvio…'], linking: ['starting', 'Collegamento…'], error: ['error', 'Errore'], stopped: ['', 'Spento'] };
+    const [cls, label] = map[st] || ['', st];
+    statusPill.className = 'status-pill ' + cls;
+    statusPill.textContent = label;
   };
 
-  startBtn.onclick = () => run(() => api('tunnel:start'));
-  stopBtn.onclick = () => run(() => api('tunnel:stop'));
+  const tunnelFor = (port) => ((info && info.tunnels) || []).find((t) => t.localPort === Number(port));
+
+  const draw = () => {
+    if (!info) return;
+    setStatus(info.status);
+    actions.innerHTML = '';
+    body.innerHTML = '';
+    const up = info.status === 'running' || info.status === 'starting';
+
+    // --- non collegato / collegamento in corso ---
+    if (!info.linked) {
+      const claim = info.claim;
+      if (claim && claim.state !== 'error' && claim.state !== 'done') {
+        body.appendChild(h('.info-note', icon('link'), h('div.grow',
+          h('strong', CLAIM_TEXT[claim.state] || 'Collegamento in corso…'),
+          h('div.small', { style: { marginTop: '4px' } }, 'Se la pagina non si è aperta usa il pulsante qui accanto. Il collegamento si completa da solo appena confermi.')),
+          h('.col', { style: { gap: '6px' } },
+            btn('Apri il link', { cls: 'sm blue', icon: 'external', onclick: () => api('shell:openExternal', claim.url) }),
+            btn('Annulla', { cls: 'sm ghost', onclick: () => run(() => api('tunnel:cancelLink')) }))));
+      } else {
+        if (claim && claim.state === 'error') body.appendChild(h('.locked-note', icon('alert'), claim.error || 'Collegamento non riuscito.'));
+        body.appendChild(h('.how-steps',
+          h('div', h('div', h('strong', 'Collega playit.gg'), h('.small.muted', 'Si apre il browser: accedi o crea un account gratuito e conferma. Serve solo la prima volta.'))),
+          h('div', h('div', h('strong', 'CraftDock crea il tunnel'), h('.small.muted', 'Per ogni server viene creato in automatico un tunnel Minecraft Java verso la sua porta.'))),
+          h('div', h('div', h('strong', 'Condividi l\'indirizzo'), h('.small.muted', 'Ricevi un indirizzo fisso (tipo nome.gl.joinmc.link) che compare in cima a ogni server, pronto da copiare.')))));
+        actions.appendChild(btn('Collega playit.gg', { cls: 'primary', icon: 'link', onclick: () => run(() => api('tunnel:start')) }));
+      }
+      return;
+    }
+
+    // --- collegato ---
+    actions.append(
+      up ? btn('Ferma', { cls: 'danger', icon: 'stop', onclick: () => run(() => api('tunnel:stop')) })
+        : btn('Avvia tunnel', { cls: 'primary', icon: 'play', onclick: () => run(() => api('tunnel:start')) }),
+      btn('Gestisci su playit.gg', { cls: 'ghost', icon: 'external', onclick: () => api('shell:openExternal', 'https://playit.gg/account/tunnels') }));
+
+    (info.notices || []).forEach((n) => body.appendChild(h(n.priority === 'Low' ? '.info-note' : '.locked-note', icon('alert'),
+      h('div.grow', n.message), n.link ? btn('Risolvi', { cls: 'sm', icon: 'external', onclick: () => api('shell:openExternal', n.link) }) : null)));
+
+    if (!up) body.appendChild(h('.info-note', icon('info'), 'Account collegato. Avvia il tunnel per rendere raggiungibili i tuoi server.'));
+
+    const list = h('.list');
+    if (!App.servers.length) list.appendChild(h('.empty', { style: { padding: '20px' } }, 'Crea prima un server.'));
+    for (const s of App.servers) {
+      const t = tunnelFor(s.port);
+      const addr = (t && t.address) || '';
+      list.appendChild(h('.list-item',
+        h('.li-icon', typeGlyph(s.type)),
+        h('.li-main',
+          h('.li-title', s.name, h('span.tag', `porta ${s.port}`), t && t.disabled ? h('span.tag.red', t.disabled) : null),
+          h('.li-sub', addr ? h('code.selectable', addr) : (t ? 'Indirizzo in assegnazione…' : 'Nessun tunnel per questo server'))),
+        addr ? btn('', { cls: 'sm ghost icon', icon: 'copy', title: 'Copia', onclick: () => copyText(addr) }) : null,
+        !t ? btn('Crea indirizzo', { cls: 'sm blue', icon: 'globe', onclick: async () => {
+          if (await run(() => api('tunnel:ensureForServer', s.id), 'Indirizzo pubblico pronto')) { await refreshServers(); load(); }
+        } }) : null));
+    }
+    (info.pending || []).forEach((p) => list.appendChild(h('.list-item', h('.li-icon', icon('clock')), h('.li-main', h('.li-title', p.name), h('.li-sub', p.status)))));
+    body.appendChild(h('h3', { style: { margin: '14px 0 8px' } }, 'I tuoi server'));
+    body.appendChild(h('.card', { style: { padding: 0 } }, list));
+
+    const others = (info.tunnels || []).filter((t) => !App.servers.some((s) => Number(s.port) === t.localPort));
+    if (others.length) {
+      body.appendChild(h('h3', { style: { margin: '14px 0 8px' } }, 'Altri tunnel dell\'agente'));
+      const ol = h('.list');
+      others.forEach((t) => ol.appendChild(h('.list-item', h('.li-icon', icon('globe')), h('.li-main', h('.li-title', t.name || t.typeLabel), h('.li-sub', `${t.address || '…'} → ${t.localIp}:${t.localPort || '?'}`)),
+        t.address ? btn('', { cls: 'sm ghost icon', icon: 'copy', onclick: () => copyText(t.address) }) : null)));
+      body.appendChild(h('.card', { style: { padding: 0 } }, ol));
+    }
+
+    body.appendChild(h('.row', { style: { marginTop: '12px' } },
+      btn('Aggiorna', { cls: 'sm', icon: 'refresh', onclick: () => run(() => api('tunnel:refresh')).then(load) }),
+      h('span.grow'),
+      btn('Scollega account', { cls: 'sm ghost', icon: 'x', onclick: async () => {
+        if (await confirmBox('Scollega playit.gg', 'CraftDock dimentica la chiave dell\'agente. I tunnel restano sul tuo account playit.gg e potrai ricollegarti quando vuoi.', { okLabel: 'Scollega', danger: true })) { await run(() => api('tunnel:unlink')); load(); }
+      } })));
+  };
+
+  const manual = h('input.input', { placeholder: 'es. nome-casuale.gl.joinmc.link', style: { fontFamily: 'var(--mono)' } });
+  const saveManual = async () => {
+    await run(() => api('tunnel:setAddress', manual.value.trim()), 'Indirizzo salvato');
+    App.info.config.playit = Object.assign({}, App.info.config.playit, { publicAddress: manual.value.trim() });
+  };
 
   page.appendChild(h('.card',
-    h('.card-head', icon('globe'), h('h2', 'playit.gg'), h('span.tag.green', 'consigliato · gratuito'), statusPill,
-      h('.act', startBtn, stopBtn,
-        btn('Apri finestra playit', { icon: 'external', title: 'Apre l\'agente in una finestra separata: utile per la prima configurazione', onclick: () => run(() => api('tunnel:openConsole')) }),
-        btn('Sito', { cls: 'ghost', icon: 'external', onclick: () => api('shell:openExternal', 'https://playit.gg/account/tunnels') }))),
-    claimBox,
-    h('.grid-2', { style: { alignItems: 'start' } },
-      h('div',
-        h('h3', 'Configurazione (una volta sola)'),
-        h('.how-steps',
-          h('div', h('div', h('strong', 'Avvia il tunnel'), h('.small.muted', 'L\'agente ufficiale viene scaricato in automatico. Se non compare il link al punto 2, usa "Apri finestra playit".'))),
-          h('div', h('div', h('strong', 'Collega il tuo account'), h('.small.muted', 'Apri il link di registrazione (claim) e accedi su playit.gg.'))),
-          h('div', h('div', h('strong', 'Crea un tunnel "Minecraft Java"'), h('.small.muted', 'Sul sito, in Tunnels → Add Tunnel, indirizzo locale e porta del server: ', h('code', ports)))),
-          h('div', h('div', h('strong', 'Copia l\'indirizzo qui a destra'), h('.small.muted', 'È quello che darai ai tuoi amici. Rimane lo stesso per sempre.'))))),
-      h('div',
-        h('h3', 'Indirizzo pubblico'),
-        h('.row', addr, btn('Salva', { cls: 'primary', onclick: saveAddr })),
-        h('.small.muted', { style: { margin: '6px 0 10px' } }, 'Indirizzi rilevati dall\'agente (clicca per usarli):'),
-        detected,
-        h('.spacer'),
-        h('h3', 'Registro dell\'agente'),
-        logBox))));
+    h('.card-head', icon('globe'), h('h2', 'playit.gg'), h('span.tag.green', 'consigliato · gratuito'), statusPill, actions),
+    body,
+    h('details', { style: { marginTop: '16px' } },
+      h('summary.small.muted', { style: { cursor: 'pointer' } }, 'Registro dell\'agente e opzioni avanzate'),
+      h('.spacer'),
+      logBox,
+      h('.spacer'),
+      h('.field', h('label', 'Indirizzo pubblico manuale (se usi un tunnel creato a mano)'), h('.row', manual, btn('Salva', { cls: 'sm', onclick: saveManual }))))));
 
   // Alternative
   const netBox = h('div');
@@ -77,7 +134,7 @@ function renderConnection(main) {
   page.appendChild(h('.grid-2', { style: { marginTop: '14px', alignItems: 'start' } },
     h('.card',
       h('.card-head', icon('wifi'), h('h2', 'Alternativa: LAN virtuale')),
-      h('p.small.muted', { style: { marginTop: 0 } }, 'Con Tailscale, ZeroTier o Radmin VPN tu e i tuoi amici installate lo stesso programma ed entrate nella stessa rete privata: si connettono all\'IP virtuale del tuo PC. Latenza ottima, ma ogni giocatore deve installare il programma.'),
+      h('p.small.muted', { style: { marginTop: 0 } }, 'Con Tailscale, ZeroTier o Radmin VPN tu e i tuoi amici installate lo stesso programma ed entrate nella stessa rete privata: si connettono all\'IP virtuale del tuo PC.'),
       h('.row.wrap',
         btn('Tailscale', { cls: 'sm', icon: 'external', onclick: () => api('shell:openExternal', 'https://tailscale.com/download/windows') }),
         btn('ZeroTier', { cls: 'sm', icon: 'external', onclick: () => api('shell:openExternal', 'https://www.zerotier.com/download/') }),
@@ -89,17 +146,19 @@ function renderConnection(main) {
   main.appendChild(page);
 
   drawNet(App.net || []);
-  api('tunnel:info').then((info) => {
-    setStatus(info.status);
-    addr.value = info.publicAddress || '';
-    showClaim(info.claimUrl);
-    info.addresses.forEach(addDetected);
-    logBox.textContent = info.log.join('\n') || (info.installed ? 'Agente installato. Premi "Avvia tunnel".' : 'Agente non ancora scaricato: premi "Avvia tunnel".');
+  const load = async () => {
+    const i = await api('tunnel:info').catch(errToast);
+    if (!i) return;
+    info = i;
+    manual.value = i.publicAddress || '';
+    logBox.textContent = i.log.join('\n') || 'Nessun messaggio.';
     logBox.scrollTop = logBox.scrollHeight;
-  }).catch(errToast);
+    draw();
+  };
+  load();
 
-  App.hooks.tunnelLog = (l) => { if (logBox.textContent.startsWith('Agente')) logBox.textContent = ''; logBox.textContent += (logBox.textContent ? '\n' : '') + l; logBox.scrollTop = logBox.scrollHeight; };
-  App.hooks.tunnelStatus = setStatus;
-  App.hooks.tunnelClaim = showClaim;
-  App.hooks.tunnelAddress = (a) => { addDetected(a); if (!addr.value) addr.value = a; };
+  App.hooks.tunnelLog = (l) => { if (logBox.textContent === 'Nessun messaggio.') logBox.textContent = ''; logBox.textContent += (logBox.textContent ? '\n' : '') + l; logBox.scrollTop = logBox.scrollHeight; };
+  App.hooks.tunnelStatus = (st) => { if (info) { info.status = st; if (st === 'running' || st === 'starting') info.linked = true; draw(); } };
+  App.hooks.tunnelClaim = (claim) => { if (info) { info.claim = claim; if (claim && claim.state === 'done') info.linked = true; draw(); } };
+  App.hooks.tunnelTunnels = (st) => { if (info) { Object.assign(info, st); info.linked = true; draw(); } };
 }

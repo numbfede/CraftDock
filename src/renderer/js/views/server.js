@@ -111,7 +111,12 @@ function renderAddressBar(s) {
   const port = Number(s.port) || 25565;
   const withPort = (ip) => (port === 25565 ? ip : `${ip}:${port}`);
   return h('.address-bar',
-    pub ? chip('Indirizzo per gli amici', pub, true) : h('div', h('.lbl', 'Indirizzo per gli amici'), h('a', { onclick: () => go('connection') }, 'Configura la connessione senza port forwarding →')),
+    pub ? chip('Indirizzo per gli amici', pub, true) : h('div', h('.lbl', 'Indirizzo per gli amici'),
+      h('.row', { style: { gap: '8px', marginTop: '4px' } },
+        btn('Crea indirizzo pubblico', { cls: 'sm blue', icon: 'globe', title: 'Collega playit.gg (se serve) e crea un tunnel per questo server, senza port forwarding', onclick: async () => {
+          if (await run(() => api('tunnel:ensureForServer', s.id), 'Indirizzo pubblico pronto: copialo e mandalo agli amici')) { await refreshServers(); renderMain(); }
+        } }),
+        h('a.small', { onclick: () => go('connection') }, 'Altre opzioni'))),
     h('span.grow'),
     chip('Sul tuo PC', withPort('localhost')),
     lan ? chip('Rete di casa (LAN)', withPort(lan.ip)) : null,

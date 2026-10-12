@@ -15,7 +15,7 @@ async function call(channel, ...args) {
 }
 
 const EVENTS = ['server:log', 'server:status', 'server:players', 'server:stats', 'server:eula', 'servers:changed', 'task',
-  'tunnel:log', 'tunnel:status', 'tunnel:claim', 'tunnel:address', 'backups:changed', 'app:shutting-down'];
+  'tunnel:log', 'tunnel:status', 'tunnel:claim', 'tunnel:address', 'tunnel:tunnels', 'backups:changed', 'app:shutting-down'];
 
 contextBridge.exposeInMainWorld('craftdock', {
   call,

@@ -462,9 +462,24 @@ function registerIpc() {
   handle('tunnel:info', () => playit.info());
   handle('tunnel:start', () => playit.start());
   handle('tunnel:stop', () => playit.stop());
-  handle('tunnel:openConsole', () => playit.openConsole());
+  handle('tunnel:link', () => playit.link());
+  handle('tunnel:cancelLink', () => playit.cancelLink());
+  handle('tunnel:unlink', () => playit.unlink());
+  handle('tunnel:refresh', () => playit.refresh());
   handle('tunnel:install', () => withTask('Scarico playit.gg', (p) => playit.install(p)));
   handle('tunnel:setAddress', (addr) => playit.setPublicAddress(addr));
+  // Crea (o riusa) il tunnel Minecraft per la porta del server e salva l'indirizzo nel server
+  handle('tunnel:ensureForServer', async (id) => {
+    const s = needServer(id);
+    if (!playit.proc) await playit.start();
+    const t = await withTask(`Creo l'indirizzo pubblico per ${s.name}`, () => playit.ensureTunnel(Number(s.port) || 25565, `CraftDock ${s.name}`));
+    if (t.address) {
+      await store.update(id, { publicAddress: t.address });
+      if (!store.config.playit.publicAddress) await playit.setPublicAddress(t.address);
+      send('servers:changed');
+    }
+    return t;
+  });
   handle('net:info', () => networkInfo());
 }
 
@@ -495,8 +510,9 @@ function wireEvents() {
   };
   playit.on('log', (l) => send('tunnel:log', l));
   playit.on('status', (st) => send('tunnel:status', st));
-  playit.on('claim', (url) => send('tunnel:claim', url));
+  playit.on('claim', (claim) => send('tunnel:claim', claim));
   playit.on('address', (a) => send('tunnel:address', a));
+  playit.on('tunnels', (st) => send('tunnel:tunnels', st));
 }
 
 // ---------- Finestra ----------
@@ -556,7 +572,7 @@ app.whenReady().then(async () => {
   worlds = new WorldManager(store);
   backups = new BackupManager(store, servers);
   mods = new ModManager(store);
-  playit = new PlayitManager(store);
+  playit = new PlayitManager(store, { appVersion: app.getVersion(), openExternal: (url) => shell.openExternal(url) });
   Menu.setApplicationMenu(null);
   registerIpc();
   wireEvents();

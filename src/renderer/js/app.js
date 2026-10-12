@@ -128,7 +128,12 @@ function wireEvents() {
   window.craftdock.on('backups:changed', (id) => { if (id === App.selectedId && App.hooks.onBackups) App.hooks.onBackups(); });
   window.craftdock.on('tunnel:log', (l) => App.hooks.tunnelLog && App.hooks.tunnelLog(l));
   window.craftdock.on('tunnel:status', (st) => { App.tunnelStatus = st; renderSidebar(); if (App.hooks.tunnelStatus) App.hooks.tunnelStatus(st); });
-  window.craftdock.on('tunnel:claim', (url) => { if (App.hooks.tunnelClaim) App.hooks.tunnelClaim(url); else toast('playit.gg: apri la pagina Connessione amici per collegare l\'account', 'info', 7000); });
+  window.craftdock.on('tunnel:claim', (claim) => {
+    if (App.hooks.tunnelClaim) App.hooks.tunnelClaim(claim);
+    else if (claim && claim.state === 'waiting-visit') toast('playit.gg: conferma il collegamento nella pagina che si è aperta nel browser', 'info', 8000);
+    else if (claim && claim.state === 'done') toast('Account playit.gg collegato', 'ok');
+  });
+  window.craftdock.on('tunnel:tunnels', (st) => { if (App.hooks.tunnelTunnels) App.hooks.tunnelTunnels(st); });
   window.craftdock.on('tunnel:address', (a) => {
     if (!App.info.config.playit.publicAddress) App.info.config.playit.publicAddress = a;
     if (App.hooks.tunnelAddress) App.hooks.tunnelAddress(a);
