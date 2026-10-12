@@ -7,7 +7,11 @@ I tuoi amici entrano **senza port forwarding** grazie al tunnel playit.gg integr
 
 ![CraftDock, panoramica di un server](docs/screenshots/panoramica.png)
 
-## Avvio rapido
+## Download
+
+**[Scarica CraftDock per Windows](https://craftdock.numbfede.com/download)** (installer) oppure la [versione portatile](https://craftdock.numbfede.com/download/portable). I link puntano sempre all'ultima versione pubblicata.
+
+## Avvio dal codice
 
 1. Installa [Node.js](https://nodejs.org) 20 o superiore (versione LTS).
 2. Doppio clic su **`Avvia.bat`** (la prima volta installa le dipendenze, poi apre l'app).
