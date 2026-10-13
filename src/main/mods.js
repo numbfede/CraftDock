@@ -3,7 +3,7 @@
 
 const path = require('path');
 const fsp = require('fs/promises');
-const { getJson, postJson, download, sha1File, exists, readJson, writeJson } = require('./util');
+const { getJson, postJson, download, sha1File, exists, readJson, writeJson, compareVersions } = require('./util');
 const zip = require('./zip');
 const { MODRINTH_LOADER, CURSE_LOADER, TYPES } = require('./loaders');
 const CF_BUILTIN_KEY = require('./curseforge-key');
@@ -390,6 +390,97 @@ class ModManager {
     }
     const disabled = await this.disableClientOnly(server);
     return { warnings, disabled };
+  }
+
+  /**
+   * Mod che servono anche a chi entra nel server: quelle attive, tranne le solo-server,
+   * più le mod solo-client che CraftDock ha disattivato sul server (shader, minimappe dei modpack…).
+   */
+  async friendsMods(server) {
+    if (folderFor(server) !== 'mods' || server.type === 'vanilla') return { include: [], skipped: [] };
+    const dir = this.dir(server);
+    const include = []; const skipped = [];
+    for (const f of (await fsp.readdir(dir).catch(() => [])).sort()) {
+      if (!/\.jar(\.disabled)?$/i.test(f)) continue;
+      const full = path.join(dir, f);
+      const meta = await this.readJarMeta(full);
+      const name = f.replace(/\.disabled$/i, '');
+      const label = meta.name || name;
+      if (f.endsWith('.disabled')) {
+        if (meta.environment === 'client' || CLIENT_ONLY_RE.test(name)) include.push({ file: full, name, label });
+        continue;
+      }
+      if (meta.environment === 'server') { skipped.push(label); continue; }
+      include.push({ file: full, name, label });
+    }
+    return { include, skipped };
+  }
+
+  /**
+   * Pacchetto per gli amici. format 'mrpack': si importa in Modrinth App, Prism, ATLauncher e crea
+   * un profilo con la stessa versione di Minecraft e del loader; le mod presenti su Modrinth vengono
+   * indicate con il loro link, le altre sono incluse nel file. format 'zip': solo i .jar da mettere in mods.
+   */
+  async exportFriendsPack(server, outFile, { format = 'mrpack', onProgress } = {}) {
+    const { include, skipped } = await this.friendsMods(server);
+    if (!include.length) throw new Error(t('Questo server non ha mod da passare agli amici: basta Minecraft {mcVersion}.', { mcVersion: server.mcVersion }));
+    onProgress && onProgress(null, t('Preparo il pacchetto…'));
+    if (format === 'zip') {
+      await zip.createZip(outFile, include.map((m) => ({ path: m.file, name: `mods/${m.name}` })));
+      return { file: outFile, count: include.length, linked: 0, skipped };
+    }
+    // cerca su Modrinth le mod per hash: quelle trovate si scaricano da lì, le altre vanno nel pacchetto
+    const bySha1 = new Map();
+    for (const m of include) bySha1.set(await sha1File(m.file), m);
+    let found = {};
+    try {
+      found = await postJson(`${MR}/version_files`, { hashes: [...bySha1.keys()], algorithm: 'sha1' });
+    } catch (_) { /* senza rete tutte le mod finiscono nel pacchetto */ }
+    const files = []; const overrides = [];
+    for (const [sha1, m] of bySha1) {
+      const v = found[sha1];
+      const f = v && (v.files || []).find((x) => x.hashes && x.hashes.sha1 === sha1);
+      if (f && f.url && f.hashes.sha512) {
+        files.push({ path: `mods/${m.name}`, hashes: { sha1, sha512: f.hashes.sha512 }, env: { client: 'required', server: 'optional' }, downloads: [f.url], fileSize: f.size });
+      } else overrides.push(m);
+    }
+    const LOADER_DEP = { fabric: 'fabric-loader', quilt: 'quilt-loader', forge: 'forge', neoforge: 'neoforge' };
+    const dependencies = { minecraft: server.mcVersion };
+    const loaderVersion = LOADER_DEP[server.type] ? (server.loaderVersion || await this.guessLoaderVersion(server)) : null;
+    if (loaderVersion) dependencies[LOADER_DEP[server.type]] = loaderVersion;
+    const index = {
+      formatVersion: 1, game: 'minecraft', versionId: new Date().toISOString().slice(0, 10),
+      name: server.name, summary: t('Le mod per entrare nel server {name} (creato con CraftDock)', { name: server.name }),
+      files, dependencies,
+    };
+    const tmpDir = await fsp.mkdtemp(path.join(require('os').tmpdir(), 'craftdock-pack-'));
+    try {
+      const indexFile = path.join(tmpDir, 'modrinth.index.json');
+      await fsp.writeFile(indexFile, JSON.stringify(index, null, 2));
+      await zip.createZip(outFile, [{ path: indexFile, name: 'modrinth.index.json' }].concat(overrides.map((m) => ({ path: m.file, name: `overrides/mods/${m.name}` }))));
+    } finally {
+      await fsp.rm(tmpDir, { recursive: true, force: true });
+    }
+    return { file: outFile, count: include.length, linked: files.length, skipped, loaderMissing: !!LOADER_DEP[server.type] && !loaderVersion };
+  }
+
+  /** Versione del loader per i server importati (non registrata da CraftDock): cartella libraries, poi l'ultima stabile. */
+  async guessLoaderVersion(server) {
+    const LIB = {
+      fabric: ['net', 'fabricmc', 'fabric-loader'], quilt: ['org', 'quiltmc', 'quilt-loader'],
+      forge: ['net', 'minecraftforge', 'forge'], neoforge: ['net', 'neoforged', 'neoforge'],
+    }[server.type];
+    if (!LIB) return null;
+    const dirs = (await fsp.readdir(path.join(server.dir, 'libraries', ...LIB)).catch(() => [])).filter((d) => /^\d/.test(d)).sort(compareVersions);
+    let v = dirs.pop() || null;
+    if (v && server.type === 'forge' && v.startsWith(server.mcVersion + '-')) v = v.slice(server.mcVersion.length + 1);
+    if (v) return v;
+    if (server.type === 'fabric') {
+      const list = await getJson('https://meta.fabricmc.net/v2/versions/loader').catch(() => []);
+      const stable = list.find((x) => x.stable) || list[0];
+      return stable ? stable.version : null;
+    }
+    return null;
   }
 
   /** Disattiva le mod solo-client (che impedirebbero l'avvio del server dedicato). */

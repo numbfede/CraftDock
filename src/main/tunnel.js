@@ -38,6 +38,21 @@ const CLAIM_TIMEOUT_MS = 15 * 60e3;
 // Named pipe/socket nostro, così non entriamo in conflitto con un servizio playit installato a parte.
 const SOCKET_PATH = process.platform === 'win32' ? '\\\\.\\pipe\\craftdock-playitd' : path.join(os.tmpdir(), 'craftdock-playitd.sock');
 
+
+// Avvisi di playit.gg tradotti e spiegati (arrivano in inglese dall'API)
+const NOTICES = [
+  [/verify (your )?e-?mail/i, () => t('Verifica l\'email del tuo account playit.gg: finché non lo fai, playit non crea nuovi tunnel e quelli esistenti potrebbero non funzionare.'), 'https://playit.gg/account'],
+  [/agent.*(out ?of ?date|too old|update)/i, () => t('L\'agente playit.gg è da aggiornare: fermalo e riavvialo, CraftDock scarica l\'ultima versione.'), null],
+];
+function noticeText(msg) {
+  const hit = NOTICES.find(([re]) => re.test(msg || ''));
+  return hit ? hit[1]() : msg;
+}
+function noticeLink(msg) {
+  const hit = NOTICES.find(([re]) => re.test(msg || ''));
+  return hit ? hit[2] : null;
+}
+
 class PlayitApiError extends Error {
   constructor(kind, data) {
     super(typeof data === 'string' ? data : (data && (data.message || data.type)) || kind);
@@ -384,7 +399,7 @@ read -n 1 -s -r -p "Premi un tasto per chiudere"
       };
     });
     this.pending = (data.pending || []).map((t) => ({ id: t.id, name: t.name, status: t.status_msg }));
-    this.notices = (data.notices || []).map((n) => ({ priority: n.priority, message: n.message, link: n.resolve_link }));
+    this.notices = (data.notices || []).map((n) => ({ priority: n.priority, message: noticeText(n.message), link: n.resolve_link || noticeLink(n.message) }));
     if (this.proc && this.status === 'starting') { this.setStatus('running'); this.restarts = 0; }
     this.emit('tunnels', this.tunnelState());
     for (const tun of this.tunnels) if (tun.address) this.emit('address', tun.address);

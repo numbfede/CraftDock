@@ -151,12 +151,17 @@ async function importServerFolder({ dir, name, copy, install }) {
     await withTask(t('Copio la cartella del server…'), () => copyDir(dir, target));
   }
   const props = await properties.readFile(path.join(target, 'server.properties'));
+  // gli hosting (Aternos & co.) scrivono una porta a caso: si torna alla 25565, quella che si aspettano Minecraft e il tunnel
+  const origPort = Number(props.map['server-port']) || 25565;
+  const port = await findFreePort(25565, store.servers.map((x) => Number(x.port)));
+  if (port !== origPort || !props.map['server-port']) await properties.update(path.join(target, 'server.properties'), { 'server-port': String(port) });
   const s = await store.add({
     name: name || path.basename(dir), type: detected.type, mcVersion: detected.mcVersion || '', loaderVersion: null,
-    dir: target, port: Number(props.map['server-port']) || 25565, launch: detected.launch,
+    dir: target, port, launch: detected.launch,
     javaMajor: detected.mcVersion ? await loaders.requiredJava(detected.mcVersion) : 21, imported: true,
   });
   send('servers:changed');
+  if (port !== origPort) servers.info(s.id, t('Porta impostata su {port} (nella cartella era {origPort}).', { port, origPort }));
   if (!detected.launch) {
     // scarica il software del server nella cartella, lasciando mondo, mod e configurazioni dove sono
     const next = Object.assign({}, s, { type: install.type, mcVersion: install.mcVersion, loaderVersion: install.loaderVersion || null });
@@ -479,6 +484,23 @@ function registerIpc() {
   handle('mods:checkUpdates', (id) => mods.checkUpdates(needServer(id)));
   handle('mods:applyUpdate', (id, upd) => withTask(t('Aggiorno mod'), (p) => mods.applyUpdate(needServer(id), upd, p)));
   handle('mods:disableClientOnly', (id) => mods.disableClientOnly(needServer(id)));
+  handle('mods:friendsInfo', async (id) => {
+    const r = await mods.friendsMods(needServer(id));
+    return { count: r.include.length, mods: r.include.map((m) => m.label), skipped: r.skipped };
+  });
+  handle('mods:exportFriendsPack', async (id, format) => {
+    const s = needServer(id);
+    const ext = format === 'zip' ? 'zip' : 'mrpack';
+    const r = await dialog.showSaveDialog(win, {
+      title: t('Salva il pacchetto per gli amici'),
+      defaultPath: path.join(app.getPath('downloads'), `${slugify(s.name)}-${format === 'zip' ? 'mod' : 'amici'}.${ext}`),
+      filters: [{ name: format === 'zip' ? 'Zip' : 'Modrinth (.mrpack)', extensions: [ext] }],
+    });
+    if (r.canceled) return null;
+    const res = await withTask(t('Pacchetto per gli amici'), (p) => mods.exportFriendsPack(s, r.filePath, { format, onProgress: p }));
+    shell.showItemInFolder(r.filePath);
+    return res;
+  });
   handle('mr:search', (id, opts) => mods.modrinthSearch(needServer(id), opts));
   handle('mr:searchPacks', (opts) => mods.modrinthSearch({ type: 'fabric', mcVersion: '' }, Object.assign({ projectType: 'modpack' }, opts)));
   handle('mr:versions', (projectId, filter) => mods.modrinthVersions(projectId, filter || {}));

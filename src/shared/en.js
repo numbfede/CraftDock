@@ -1064,6 +1064,48 @@
     "Succede con i file scaricati da Aternos e da molti hosting: danno mondo, mod e impostazioni ma non il programma del server. Scegli tipo e versione (CraftDock li ha già indovinati dai tuoi file) e lo scarico io; il resto della cartella non viene toccato.": "This happens with files downloaded from Aternos and many hosts: you get the world, mods and settings but not the server program. Pick the type and version (CraftDock already guessed them from your files) and it downloads it; the rest of the folder isn't touched.",
   });
 
+  // ---------- friends ----------
+  add({
+    "Verifica l'email del tuo account playit.gg: finché non lo fai, playit non crea nuovi tunnel e quelli esistenti potrebbero non funzionare.": "Verify the email of your playit.gg account: until you do, playit won't create new tunnels and existing ones may not work.",
+    "L'agente playit.gg è da aggiornare: fermalo e riavvialo, CraftDock scarica l'ultima versione.": "The playit.gg agent needs an update: stop it and start it again, CraftDock downloads the latest version.",
+    "Questo server non ha mod da passare agli amici: basta Minecraft {mcVersion}.": "This server has no mods to share with friends: Minecraft {mcVersion} is all they need.",
+    "Preparo il pacchetto…": "Preparing the pack…",
+    "Le mod per entrare nel server {name} (creato con CraftDock)": "The mods to join the {name} server (made with CraftDock)",
+    "Pacchetto amici": "Friends pack",
+    "Crea il file con le mod che servono a chi entra nel server": "Create the file with the mods players need to join the server",
+    "e altre {n}": "and {n} more",
+    "Per entrare in un server con mod, gli amici devono avere nel gioco le stesse mod, nelle stesse versioni. Altrimenti Minecraft li butta fuori con errori come \"mismatched mod set\".": "To join a modded server, friends need the same mods in their game, in the same versions. Otherwise Minecraft kicks them out with errors like \"mismatched mod set\".",
+    "Profilo pronto (.mrpack)": "Ready-made profile (.mrpack)",
+    "Si importa in Modrinth App o Prism Launcher: crea il profilo con Minecraft {mcVersion}, il loader e tutte le mod.": "Import it in Modrinth App or Prism Launcher: it creates a profile with Minecraft {mcVersion}, the loader and every mod.",
+    "Solo le mod (.zip)": "Mods only (.zip)",
+    "Per chi usa il launcher ufficiale con Fabric/Forge già installato: si estrae nella cartella .minecraft.": "For the official launcher with Fabric/Forge already installed: extract it into the .minecraft folder.",
+    "Escluse perché servono solo al server: {list}": "Left out because they're server-only: {list}",
+    "Lunar Client e Badlion non permettono di aggiungere mod: con loro si entra solo nei server senza mod da installare.": "Lunar Client and Badlion don't let you add mods: with them you can only join servers that need no extra mods.",
+    "Crea pacchetto": "Create pack",
+    "Pacchetto creato: {n} mod": "Pack created: {n} mods",
+    "Pacchetto creato: {n} mod ({linked} scaricate da Modrinth all'importazione)": "Pack created: {n} mods ({linked} downloaded from Modrinth on import)",
+    "Non conosco la versione del loader di questo server: in Modrinth App controlla che il profilo usi la stessa del server.": "I don't know this server's loader version: in Modrinth App check that the profile uses the same one as the server.",
+    "Incluso {n} file: ": "{n} file included: ",
+    "Inclusi {n} file: ": "{n} files included: ",
+    "Porta impostata su {port} (nella cartella era {origPort}).": "Port set to {port} (it was {origPort} in the folder).",
+    "Salva il pacchetto per gli amici": "Save the friends pack",
+    "Pacchetto per gli amici": "Friends pack",
+    "Mod per gli amici": "Mods for friends",
+    "Chi entra deve avere le stesse mod del server": "Players need the same mods as the server",
+    "nessun server sulla porta {port}": "no server on port {port}",
+    "Usa per {name}": "Use for {name}",
+    "Il server {name} passa alla porta {port} e questo indirizzo porterà a lui": "The {name} server moves to port {port} and this address will lead to it",
+    "Un tunnel porta a una porta dove non c'è nessun server.": "A tunnel points to a port with no server on it.",
+    "Chi usa quell'indirizzo riceve \"Connection reset\". Con \"Usa per…\" il server passa su quella porta e l'indirizzo torna a funzionare.": "Anyone using that address gets \"Connection reset\". With \"Use for…\" the server moves to that port and the address works again.",
+    "Usa questo indirizzo per {name}": "Use this address for {name}",
+    "Il server {name} passa dalla porta {from} alla {to}: l'indirizzo {address} porterà a lui.": "The {name} server moves from port {from} to {to}: the address {address} will lead to it.",
+    "Il server è acceso: verrà riavviato.": "The server is running: it will be restarted.",
+    "Cambia porta e riavvia": "Change port and restart",
+    "Cambia porta": "Change port",
+    "La porta {port} è già usata da {name}.": "Port {port} is already used by {name}.",
+    "{name} ora usa la porta {port}": "{name} now uses port {port}",
+  });
+
   // @@END
 
   if (typeof module !== 'undefined' && module.exports) module.exports = EN;

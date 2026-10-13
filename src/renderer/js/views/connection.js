@@ -89,8 +89,9 @@ function renderConnection(main) {
         h('.li-main',
           h('.li-title', s.name, h('span.tag', t('porta {port}', { port: s.port })), tun && tun.disabled ? h('span.tag.red', tun.disabled) : null),
           h('.li-sub', addr ? h('code.selectable', addr) : (tun ? t('Indirizzo in assegnazione…') : t('Nessun tunnel per questo server')))),
+        addr && MODDED.includes(s.type) ? btn(t('Mod per gli amici'), { cls: 'sm ghost', icon: 'share', title: t('Chi entra deve avere le stesse mod del server'), onclick: () => friendsPackModal(s) }) : null,
         addr ? btn('', { cls: 'sm ghost icon', icon: 'copy', title: t('Copia'), onclick: () => copyText(addr) }) : null,
-        !t ? btn(t('Crea indirizzo'), { cls: 'sm blue', icon: 'globe', onclick: async () => {
+        !tun ? btn(t('Crea indirizzo'), { cls: 'sm blue', icon: 'globe', onclick: async () => {
           if (await run(() => api('tunnel:ensureForServer', s.id), t('Indirizzo pubblico pronto'))) { await refreshServers(); load(); }
         } }) : null));
     }
@@ -102,9 +103,23 @@ function renderConnection(main) {
     if (others.length) {
       body.appendChild(h('h3', { style: { margin: '14px 0 8px' } }, t('Altri tunnel dell\'agente')));
       const ol = h('.list');
-      others.forEach((x) => ol.appendChild(h('.list-item', h('.li-icon', icon('globe')), h('.li-main', h('.li-title', x.name || x.typeLabel), h('.li-sub', `${x.address || '…'} → ${x.localIp}:${x.localPort || '?'}`)),
-        x.address ? btn('', { cls: 'sm ghost icon', icon: 'copy', onclick: () => copyText(x.address) }) : null)));
+      // server senza tunnel: si possono spostare sulla porta di un tunnel rimasto senza server
+      const orphanServers = App.servers.filter((s) => !tunnelFor(s.port));
+      others.forEach((x) => {
+        const dead = x.localPort && (!x.type || /minecraft-java/i.test(x.type));
+        ol.appendChild(h('.list-item', h('.li-icon', icon('globe')),
+          h('.li-main',
+            h('.li-title', x.name || x.typeLabel, dead ? h('span.tag.yellow', t('nessun server sulla porta {port}', { port: x.localPort })) : null),
+            h('.li-sub', `${x.address || '…'} → ${x.localIp}:${x.localPort || '?'}`)),
+          dead ? orphanServers.slice(0, 3).map((s) => btn(t('Usa per {name}', { name: s.name }), { cls: 'sm blue', icon: 'link', title: t('Il server {name} passa alla porta {port} e questo indirizzo porterà a lui', { name: s.name, port: x.localPort }), onclick: () => moveServerToTunnel(s, x) })) : null,
+          x.address ? btn('', { cls: 'sm ghost icon', icon: 'copy', onclick: () => copyText(x.address) }) : null));
+      });
       body.appendChild(h('.card', { style: { padding: 0 } }, ol));
+      if (others.some((x) => x.localPort && (!x.type || /minecraft-java/i.test(x.type)))) {
+        body.appendChild(h('.locked-note', { style: { marginTop: '10px' } }, icon('alert'), h('div',
+          h('strong', t('Un tunnel porta a una porta dove non c\'è nessun server.')), ' ',
+          t('Chi usa quell\'indirizzo riceve "Connection reset". Con "Usa per…" il server passa su quella porta e l\'indirizzo torna a funzionare.'))));
+      }
     }
 
     body.appendChild(h('.row', { style: { marginTop: '12px' } },
@@ -177,4 +192,24 @@ function renderConnection(main) {
   App.hooks.tunnelStatus = (st) => { if (info) { info.status = st; if (st === 'running' || st === 'starting') info.linked = true; draw(); } };
   App.hooks.tunnelClaim = (claim) => { if (info) { info.claim = claim; if (claim && claim.state === 'done') info.linked = true; draw(); } };
   App.hooks.tunnelTunnels = (st) => { if (info) { Object.assign(info, st); info.linked = true; draw(); } };
+}
+
+const MODDED = ['fabric', 'quilt', 'forge', 'neoforge'];
+
+/** Sposta un server sulla porta di un tunnel esistente (lo riavvia se è acceso). */
+async function moveServerToTunnel(s, tun) {
+  const st = s.state && s.state.status;
+  const running = st === 'running' || st === 'starting';
+  const ok = await confirmBox(t('Usa questo indirizzo per {name}', { name: s.name }),
+    t('Il server {name} passa dalla porta {from} alla {to}: l\'indirizzo {address} porterà a lui.', { name: s.name, from: s.port, to: tun.localPort, address: tun.address || '' })
+      + (running ? ' ' + t('Il server è acceso: verrà riavviato.') : ''),
+    { okLabel: running ? t('Cambia porta e riavvia') : t('Cambia porta') });
+  if (!ok) return;
+  const taken = App.servers.find((o) => o.id !== s.id && Number(o.port) === tun.localPort);
+  if (taken) { toast(t('La porta {port} è già usata da {name}.', { port: tun.localPort, name: taken.name }), 'error', 6000); return; }
+  if (!(await run(() => api('servers:update', s.id, { port: tun.localPort })))) return;
+  if (running) await run(() => api('servers:restart', s.id));
+  await refreshServers();
+  toast(t('{name} ora usa la porta {port}', { name: s.name, port: tun.localPort }), 'ok');
+  if (App.view === 'connection') renderMain();
 }

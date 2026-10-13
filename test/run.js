@@ -309,6 +309,42 @@ test('mod: metadati jar Fabric e Forge + disattivazione client-only', async () =
   }
 });
 
+test('pacchetto per gli amici: niente mod solo-server, sì a quelle solo-client disattivate', async () => {
+  const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'craftdock-friends-'));
+  try {
+    const mk = async (name, meta) => {
+      const d = path.join(tmp, 'build-' + name);
+      await fsp.mkdir(d, { recursive: true });
+      await fsp.writeFile(path.join(d, 'fabric.mod.json'), JSON.stringify(meta));
+      await zip.createZip(path.join(tmp, 'server', 'mods', name), [{ path: path.join(d, 'fabric.mod.json'), name: 'fabric.mod.json' }]);
+    };
+    await mk('fabric-api.jar', { id: 'fabric-api', name: 'Fabric API', version: '0.130.0', environment: '*' });
+    await mk('bluemap.jar', { id: 'bluemap', name: 'BlueMap', version: '5.0', environment: 'server' });
+    await mk('sodium.jar.disabled', { id: 'sodium', name: 'Sodium', version: '0.6', environment: 'client' });
+    await mk('vecchia.jar.disabled', { id: 'vecchia', name: 'Vecchia', version: '1.0', environment: '*' });
+    const mm = new ModManager({ config: {} });
+    const server = { dir: path.join(tmp, 'server'), type: 'fabric', name: 'Bananasplit', mcVersion: '26.3', loaderVersion: '0.17.2' };
+    const { include, skipped } = await mm.friendsMods(server);
+    assert.deepStrictEqual(include.map((m) => m.name).sort(), ['fabric-api.jar', 'sodium.jar']);
+    assert.deepStrictEqual(skipped, ['BlueMap']);
+    const out = path.join(tmp, 'amici.mrpack');
+    const r = await mm.exportFriendsPack(server, out, { format: 'mrpack' });
+    assert.strictEqual(r.count, 2);
+    const entries = (await zip.listEntries(out)).map((e) => e.fileName || e).sort();
+    assert.ok(entries.includes('modrinth.index.json'));
+    const index = JSON.parse((await zip.readEntry(out, 'modrinth.index.json')).toString());
+    assert.deepStrictEqual(index.dependencies, { minecraft: '26.3', 'fabric-loader': '0.17.2' });
+    // le mod non trovate su Modrinth (qui: niente rete) finiscono negli override
+    assert.strictEqual(index.files.length + entries.filter((e) => e.startsWith('overrides/mods/')).length, 2);
+    const z = await mm.exportFriendsPack(server, path.join(tmp, 'mod.zip'), { format: 'zip' });
+    assert.strictEqual(z.count, 2);
+    assert.deepStrictEqual((await zip.listEntries(path.join(tmp, 'mod.zip'))).map((e) => e.fileName || e).sort(), ['mods/fabric-api.jar', 'mods/sodium.jar']);
+    await assert.rejects(mm.exportFriendsPack({ dir: path.join(tmp, 'vuoto'), type: 'paper', mcVersion: '26.3' }, path.join(tmp, 'x.zip')));
+  } finally {
+    await fsp.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('playit: collegamento account, lettura tunnel e creazione automatica (API finta)', async () => {
   const http = require('http');
   const calls = [];

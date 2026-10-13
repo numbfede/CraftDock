@@ -90,6 +90,7 @@ function renderInstalledMods(body, s, noun) {
         const r = await run(() => api('mods:disableClientOnly', s.id));
         if (r) { toast(r.length ? t('Disattivate: {list}', { list: r.join(', ') }) : t('Nessuna mod solo-client trovata'), r.length ? 'ok' : 'info', 7000); load(); }
       } }) : null,
+      noun === 'mod' ? btn(t('Pacchetto amici'), { cls: 'sm', icon: 'share', title: t('Crea il file con le mod che servono a chi entra nel server'), onclick: () => friendsPackModal(s) }) : null,
       btn('', { cls: 'sm icon', icon: 'folder', title: t('Apri cartella'), onclick: () => run(() => api('servers:openFolder', s.id, noun === 'plugin' ? 'plugins' : 'mods')) }))),
     updBox, listBox));
 
@@ -209,4 +210,42 @@ function renderModBrowser(body, s, noun) {
     installedIds = new Set(d.mods.filter((m) => m.source).map((m) => String(m.source.projectId)));
     search(true);
   }).catch(() => search(true));
+}
+
+/**
+ * Pacchetto per gli amici: chi entra in un server con mod deve avere le stesse mod nel gioco.
+ * .mrpack si importa in Modrinth App / Prism e crea il profilo giusto; .zip contiene solo i .jar.
+ */
+async function friendsPackModal(s) {
+  const info = await run(() => api('mods:friendsInfo', s.id));
+  if (!info) return;
+  if (!info.count) { toast(t('Questo server non ha mod da passare agli amici: basta Minecraft {mcVersion}.', { mcVersion: s.mcVersion }), 'info', 6000); return; }
+  let format = 'mrpack';
+  const choice = (value, title, desc, tag) => {
+    const el = h('.type-card' + (value === format ? '.sel' : ''), { onclick: () => {
+      format = value;
+      el.parentNode.querySelectorAll('.type-card').forEach((c) => c.classList.toggle('sel', c === el));
+    } }, h('.tn', { style: { flexWrap: 'wrap' } }, icon(value === 'zip' ? 'archive' : 'package'), title, tag ? h('span.tag.green', tag) : null), h('.td', desc));
+    return el;
+  };
+  const names = info.mods.slice(0, 12).join(', ') + (info.mods.length > 12 ? ' ' + t('e altre {n}', { n: info.mods.length - 12 }) : '');
+  const m = modal({
+    title: t('Pacchetto per gli amici'),
+    body: h('div',
+      h('p.muted', { style: { marginTop: 0 } }, t('Per entrare in un server con mod, gli amici devono avere nel gioco le stesse mod, nelle stesse versioni. Altrimenti Minecraft li butta fuori con errori come "mismatched mod set".')),
+      h('.type-grid', { style: { gridTemplateColumns: '1fr 1fr' } },
+        choice('mrpack', t('Profilo pronto (.mrpack)'), t('Si importa in Modrinth App o Prism Launcher: crea il profilo con Minecraft {mcVersion}, il loader e tutte le mod.', { mcVersion: s.mcVersion }), t('consigliato')),
+        choice('zip', t('Solo le mod (.zip)'), t('Per chi usa il launcher ufficiale con Fabric/Forge già installato: si estrae nella cartella .minecraft.'))),
+      h('.info-note', { style: { marginTop: '12px' } }, icon('info'), h('div',
+        h('div', tn(info.count, 'Incluso {n} file: ', 'Inclusi {n} file: ') + names),
+        info.skipped.length ? h('.small.muted', t('Escluse perché servono solo al server: {list}', { list: info.skipped.join(', ') })) : null)),
+      h('p.small.muted', t('Lunar Client e Badlion non permettono di aggiungere mod: con loro si entra solo nei server senza mod da installare.'))),
+    foot: [btn(t('Annulla'), { onclick: () => m.close() }), btn(t('Crea pacchetto'), { cls: 'primary', icon: 'package', onclick: async () => {
+      m.close();
+      const r = await run(() => api('mods:exportFriendsPack', s.id, format));
+      if (!r) return;
+      toast(format === 'zip' || !r.linked ? t('Pacchetto creato: {n} mod', { n: r.count }) : t('Pacchetto creato: {n} mod ({linked} scaricate da Modrinth all\'importazione)', { n: r.count, linked: r.linked }), 'ok', 7000);
+      if (r.loaderMissing) toast(t('Non conosco la versione del loader di questo server: in Modrinth App controlla che il profilo usi la stessa del server.'), 'info', 9000);
+    } })],
+  });
 }
