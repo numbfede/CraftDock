@@ -345,6 +345,61 @@ test('pacchetto per gli amici: niente mod solo-server, sì a quelle solo-client 
   }
 });
 
+test('backup: regola "tieni gli ultimi N" e spostamento della cartella', async () => {
+  const { BackupManager } = require('../src/main/backups');
+  const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'craftdock-bk-'));
+  try {
+    const server = { id: 's1', backupKeep: 2, backupPruneManual: false };
+    const store = {
+      config: { root: tmp }, servers: [server],
+      get paths() { return { backups: this.config.backupsDir || path.join(tmp, 'backups') }; },
+      backupDir(id) { return path.join(this.paths.backups, id); },
+      get: () => server,
+      async saveConfig(p) { Object.assign(this.config, p); return this.config; },
+    };
+    const bm = new BackupManager(store, { isRunning: () => false });
+    const dir = store.backupDir('s1');
+    await fsp.mkdir(dir, { recursive: true });
+    const index = [];
+    for (let i = 0; i < 6; i++) {
+      const file = `b${i}.zip`;
+      await fsp.writeFile(path.join(dir, file), Buffer.alloc(1000 + i));
+      index.push({ file, createdAt: 1000 + i, scope: 'world', auto: i % 2 === 0, label: '' });
+    }
+    await fsp.writeFile(path.join(dir, 'backups.json'), JSON.stringify(index));
+    // solo automatici: b4, b2, b0 → si tengono b4 e b2
+    assert.deepStrictEqual((await bm.prunePreview('s1', 2, false)).count, 1);
+    // anche manuali: 6 backup, se ne tengono 2
+    assert.deepStrictEqual((await bm.prunePreview('s1', 2, true)).count, 4);
+    assert.strictEqual((await bm.prunePreview('s1', 0, true)).count, 0);
+    assert.strictEqual(await bm.prune('s1'), 1);
+    assert.ok(!fs.existsSync(path.join(dir, 'b0.zip')));
+    server.backupPruneManual = true;
+    assert.strictEqual(await bm.prune('s1'), 3);
+    assert.deepStrictEqual((await bm.list('s1')).map((b) => b.file), ['b5.zip', 'b4.zip']);
+    // spostamento: cartella non vuota → sottocartella dedicata; non dentro quella attuale
+    const disk = path.join(tmp, 'disco-grande');
+    await fsp.mkdir(disk, { recursive: true });
+    await fsp.writeFile(path.join(disk, 'altro.txt'), 'x');
+    const plan = await bm.planMove(disk);
+    assert.strictEqual(plan.to, path.join(disk, 'CraftDock backup'));
+    assert.strictEqual(plan.files, 3);
+    await assert.rejects(bm.planMove(path.join(store.paths.backups, 's1')));
+    const r = await bm.move(disk);
+    assert.strictEqual(store.config.backupsDir, plan.to);
+    assert.ok(fs.existsSync(path.join(plan.to, 's1', 'b5.zip')));
+    assert.ok(!fs.existsSync(path.join(tmp, 'backups')));
+    assert.strictEqual(r.files, 3);
+    assert.deepStrictEqual((await bm.list('s1')).map((b) => b.file), ['b5.zip', 'b4.zip']);
+    // disco scollegato: errore chiaro
+    store.config.backupsDir = path.join(tmp, 'file-non-cartella.txt', 'x');
+    await fsp.writeFile(path.join(tmp, 'file-non-cartella.txt'), 'x');
+    await assert.rejects(bm.ensureReachable('s1'), /non è raggiungibile/);
+  } finally {
+    await fsp.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('playit: collegamento account, lettura tunnel e creazione automatica (API finta)', async () => {
   const http = require('http');
   const calls = [];

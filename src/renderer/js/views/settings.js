@@ -23,6 +23,27 @@ function renderAppSettings(main) {
         btn('', { cls: 'icon', icon: 'folder', onclick: () => api('shell:openPath', cfg.root) })),
       h('.hint', t('Cambiandola, i server già creati restano dove sono; i nuovi verranno creati nella nuova cartella.')))));
 
+  // cartella dei backup: si può spostare su un altro disco
+  const bkDir = h('code.selectable', { style: { wordBreak: 'break-all' } }, '…');
+  const bkInfo = h('.small.muted');
+  const bkActs = h('.row.wrap', { style: { marginTop: '12px' } });
+  const drawBk = async () => {
+    const l = await api('backups:location').catch(() => null);
+    if (!l) return;
+    bkDir.textContent = l.dir;
+    bkInfo.textContent = l.reachable ? `${fmtBytes(l.bytes)} · ${tn(l.files, '{n} file', '{n} file')}` : t('Non raggiungibile: se è su un disco esterno, collegalo.');
+    bkActs.innerHTML = '';
+    bkActs.append(
+      btn(t('Sposta…'), { cls: 'primary', icon: 'hardDrive', onclick: () => moveBackupsFlow(drawBk) }),
+      l.reachable ? btn(t('Apri'), { icon: 'folder', onclick: () => api('shell:openPath', l.dir) }) : null,
+      l.custom ? btn(t('Riporta nella cartella di CraftDock'), { cls: 'ghost', onclick: () => moveBackupsFlow(drawBk, l.defaultDir) }) : null);
+  };
+  page.appendChild(h('.card', h('.card-head', icon('archive'), h('h2', t('Backup'))),
+    h('.field', h('label', t('Cartella dei backup (tutti i server)')), bkDir, bkInfo),
+    h('.small.muted', { style: { marginTop: '8px' } }, t('Se i backup diventano grandi puoi spostarli su un disco più capiente, anche esterno. CraftDock sposta quelli esistenti e salva lì i nuovi.')),
+    bkActs));
+  drawBk();
+
   page.appendChild(h('.card', h('.card-head', h('h2', t('Predefiniti'))), ram, h('.spacer'),
     h('label.check', snaps, h('span', t('Mostra snapshot e pre-release nell\'elenco delle versioni')))));
 

@@ -12,7 +12,7 @@ const { JavaManager } = require('./java');
 const loaders = require('./loaders');
 const { ServerManager, findFreePort } = require('./serverManager');
 const { WorldManager } = require('./worlds');
-const { BackupManager } = require('./backups');
+const { BackupManager, dirStats } = require('./backups');
 const { ModManager } = require('./mods');
 const { PlayitManager, networkInfo } = require('./tunnel');
 const properties = require('./properties');
@@ -309,7 +309,7 @@ function registerIpc() {
   handle('servers:importFolder', (opts) => importServerFolder(opts));
   handle('servers:detect', (dir) => loaders.detectServer(dir));
   handle('servers:update', async (id, patch) => {
-    const allowed = ['name', 'ramMb', 'jvmArgs', 'aikarFlags', 'autoRestart', 'autoBackupMinutes', 'backupKeep', 'backupOnStop', 'javaPath', 'port', 'publicAddress', 'notes', 'mcVersion', 'schedules'];
+    const allowed = ['name', 'ramMb', 'jvmArgs', 'aikarFlags', 'autoRestart', 'autoBackupMinutes', 'backupKeep', 'backupOnStop', 'javaPath', 'port', 'publicAddress', 'notes', 'mcVersion', 'schedules', 'backupPruneManual'];
     const clean = {};
     for (const k of allowed) if (k in patch) clean[k] = patch[k];
     if ('schedules' in clean) clean.schedules = sanitizeSchedules(clean.schedules);
@@ -474,7 +474,21 @@ function registerIpc() {
   handle('backups:create', (id, opts) => withTask(t('Backup in corso'), (p) => backups.create(id, Object.assign({}, opts, { onProgress: p }))));
   handle('backups:restore', (id, file) => withTask(t('Ripristino backup'), (p) => backups.restore(id, file, { onProgress: p })));
   handle('backups:remove', (id, file) => backups.remove(id, file));
-  handle('backups:openFolder', async (id) => { await fsp.mkdir(backups.dir(id), { recursive: true }); return shell.openPath(backups.dir(id)); });
+  handle('backups:openFolder', async (id) => { await backups.ensureReachable(id); return shell.openPath(backups.dir(id)); });
+  handle('backups:prunePreview', (id, keep, includeManual) => backups.prunePreview(id, keep, includeManual));
+  handle('backups:prune', async (id) => { const n = await backups.prune(id); send('backups:changed', id); return n; });
+  handle('backups:location', async () => {
+    const dir = store.paths.backups;
+    const reachable = await exists(dir);
+    const st = reachable ? await dirStats(dir) : { bytes: 0, files: 0 };
+    return { dir, custom: !!store.config.backupsDir, defaultDir: path.join(store.config.root, 'backups'), reachable, bytes: st.bytes, files: st.files };
+  });
+  handle('backups:planMove', (dir) => backups.planMove(dir));
+  handle('backups:move', async (dir) => {
+    const r = await withTask(t('Sposto la cartella dei backup'), (p) => backups.move(dir, { onProgress: p }));
+    send('backups:changed', null);
+    return r;
+  });
 
   // Mod / plugin
   handle('mods:list', (id) => mods.listInstalled(needServer(id)));

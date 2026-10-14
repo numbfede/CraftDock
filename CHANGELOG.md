@@ -15,6 +15,8 @@ versione in `package.json` come testo della release su GitHub, e il sito la most
 - **Pacchetto per gli amici.** Nella scheda Mod (e in Connessione amici) crea un file .mrpack da importare in Modrinth App o Prism, con la stessa versione di Minecraft, il loader e le mod che servono per entrare. Le mod solo-server restano fuori.
 - **Tunnel senza server.** Se un indirizzo playit porta a una porta dove non c'è nessun server, CraftDock lo segnala e con "Usa per…" sposta il server su quella porta. Le cartelle importate tornano sulla porta 25565.
 - Avvisi di playit.gg (verifica email) tradotti e spiegati; il pulsante "Crea indirizzo" ricompare per i server senza tunnel.
+- **Sposta i backup su un altro disco.** In Impostazioni → Backup (o dalla scheda Backup) scegli una nuova cartella, anche su un disco esterno: CraftDock mostra quanto spazio serve, chiede conferma, copia e verifica i backup e solo alla fine cancella gli originali.
+- **Eliminazione automatica dei backup vecchi.** Nella scheda Backup scegli quanti tenerne (3, 5, 10, 20, 50 o tutti) e se contare anche quelli manuali.
 - Il registro dell'app viene salvato su file, utile quando qualcosa va storto.
 - Installer con nome fisso: il link di download del sito porta sempre all'ultima versione.
 
@@ -28,6 +30,8 @@ versione in `package.json` come testo della release su GitHub, e il sito la most
 - **Friends pack.** In the Mods tab (and on Friends connection) create a .mrpack to import in Modrinth App or Prism, with the same Minecraft version, loader and the mods needed to join. Server-only mods are left out.
 - **Tunnels without a server.** If a playit address points to a port with no server, CraftDock flags it and "Use for…" moves the server to that port. Imported folders go back to port 25565.
 - playit.gg notices (email verification) are translated and explained; the "Create address" button shows again for servers without a tunnel.
+- **Move backups to another drive.** In Settings → Backups (or from the Backups tab) pick a new folder, even on an external drive: CraftDock shows the space needed, asks for confirmation, copies and verifies the backups and only then deletes the originals.
+- **Automatic deletion of old backups.** In the Backups tab choose how many to keep (3, 5, 10, 20, 50 or all) and whether manual ones count too.
 - The app log is saved to a file, handy when something goes wrong.
 - Fixed installer name: the website download link always points to the latest version.
 

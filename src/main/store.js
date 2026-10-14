@@ -40,7 +40,8 @@ class Store {
     return {
       root,
       servers: path.join(root, 'servers'),
-      backups: path.join(root, 'backups'),
+      // i backup possono stare altrove (es. un disco più capiente): Impostazioni → Backup → Sposta
+      backups: this.config.backupsDir || path.join(root, 'backups'),
       java: path.join(root, 'java'),
       tools: path.join(root, 'tools'),
       cache: path.join(root, 'cache'),
@@ -48,7 +49,12 @@ class Store {
   }
 
   async ensureDirs() {
-    for (const p of Object.values(this.paths)) await fsp.mkdir(p, { recursive: true });
+    for (const [k, p] of Object.entries(this.paths)) {
+      try { await fsp.mkdir(p, { recursive: true }); } catch (e) {
+        // un disco esterno scollegato non deve impedire l'avvio: lo segnala il backup quando serve
+        if (k !== 'backups') throw e;
+      }
+    }
   }
 
   async saveConfig(patch) {
@@ -76,6 +82,7 @@ class Store {
       autoRestart: true,
       autoBackupMinutes: 0,
       backupKeep: 10,
+      backupPruneManual: false,
       backupOnStop: false,
       javaPath: '',
       port: 25565,

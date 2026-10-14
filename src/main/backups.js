@@ -52,6 +52,8 @@ class BackupManager {
     const server = this.store.get(id);
     if (!server) throw new Error(t('Server non trovato'));
     if (this.busy.has(id)) throw new Error(t('C\'è già un backup in corso per questo server'));
+    if (this.moving) throw new Error(t('Sto spostando la cartella dei backup: riprova quando ho finito.'));
+    await this.ensureReachable(id);
     this.busy.add(id);
     const running = this.servers.isRunning(id) && this.servers.rt(id).status === 'running';
     try {
@@ -94,15 +96,99 @@ class BackupManager {
     }
   }
 
-  /** Mantiene al massimo N backup automatici (quelli manuali non vengono toccati). */
+  /** La cartella dei backup può stare su un disco esterno: se manca, un errore chiaro invece di ENOENT. */
+  async ensureReachable(id) {
+    try { await fsp.mkdir(this.dir(id), { recursive: true }); } catch (_) {
+      throw new Error(t('La cartella dei backup ({dir}) non è raggiungibile. Se è su un disco esterno, collegalo; altrimenti scegline un\'altra in Impostazioni → Backup.', { dir: this.store.paths.backups }));
+    }
+  }
+
+  /**
+   * Backup da eliminare secondo la regola del server: si tengono gli ultimi N (0 = tutti).
+   * Di base contano solo gli automatici; con backupPruneManual anche quelli fatti a mano.
+   */
+  async pruneCandidates(id, keep, includeManual) {
+    const n = Number(keep);
+    if (!n || n < 1) return [];
+    const list = await this.list(id);
+    const pool = list.filter((b) => includeManual || b.auto);
+    return pool.slice(n);
+  }
+
+  async prunePreview(id, keep, includeManual) {
+    const del = await this.pruneCandidates(id, keep, includeManual);
+    return { count: del.length, size: del.reduce((a, b) => a + (b.size || 0), 0) };
+  }
+
   async prune(id) {
     const server = this.store.get(id);
-    const keep = Math.max(1, Number(server && server.backupKeep) || 10);
-    const list = await this.list(id);
-    const autos = list.filter((b) => b.auto);
-    const toDelete = autos.slice(keep);
+    if (!server) return 0;
+    const keep = server.backupKeep === 0 ? 0 : (Number(server.backupKeep) || 10);
+    const toDelete = await this.pruneCandidates(id, keep, !!server.backupPruneManual);
     for (const b of toDelete) await fsp.rm(path.join(this.dir(id), b.file), { force: true });
-    if (toDelete.length) await this.saveIndex(id, list.filter((b) => !toDelete.includes(b)));
+    if (toDelete.length) {
+      const list = await this.list(id);
+      await this.saveIndex(id, list);
+    }
+    return toDelete.length;
+  }
+
+  // ---------- spostamento della cartella dei backup (anche su un altro disco) ----------
+
+  /** Calcola dove finiranno i backup e quanto spazio serve, senza toccare niente. */
+  async planMove(chosen) {
+    const from = path.resolve(this.store.paths.backups);
+    if (!chosen) throw new Error(t('Scegli una cartella'));
+    let to = path.resolve(chosen);
+    // cartella non vuota: i backup vanno in una sottocartella dedicata, per non mescolarli ad altri file
+    const entries = await fsp.readdir(to).catch(() => []);
+    if (entries.filter((e) => !e.startsWith('.')).length && path.basename(to) !== 'CraftDock backup') to = path.join(to, 'CraftDock backup');
+    const rel = path.relative(from, to);
+    if (to === from) throw new Error(t('I backup sono già in questa cartella.'));
+    if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) throw new Error(t('La nuova cartella non può stare dentro quella attuale dei backup.'));
+    const relBack = path.relative(to, from);
+    if (relBack && !relBack.startsWith('..') && !path.isAbsolute(relBack)) throw new Error(t('La nuova cartella non può contenere quella attuale dei backup.'));
+    const { bytes, files } = await dirStats(from);
+    let free = null;
+    try { const st = await fsp.statfs(await existingParent(to)); free = Number(st.bavail) * Number(st.bsize); } catch (_) {}
+    const sameDrive = await sameDevice(from, to);
+    return { from, to, bytes, files, free, sameDrive, enough: free === null || sameDrive || free > bytes * 1.02 + 50e6 };
+  }
+
+  /**
+   * Sposta tutti i backup. Sullo stesso disco è un semplice rinomina; su un altro disco copia
+   * ogni file, controlla le dimensioni e solo alla fine cancella gli originali.
+   */
+  async move(chosen, { onProgress } = {}) {
+    if (this.busy.size) throw new Error(t('C\'è un backup in corso: aspetta che finisca.'));
+    if (this.moving) throw new Error(t('Spostamento già in corso'));
+    const plan = await this.planMove(chosen);
+    if (!plan.enough) throw new Error(t('Spazio insufficiente: servono {need}, liberi {free}.', { need: fmtSize(plan.bytes), free: fmtSize(plan.free) }));
+    this.moving = true;
+    try {
+      await fsp.mkdir(plan.to, { recursive: true });
+      const top = await fsp.readdir(plan.from).catch(() => []);
+      let done = 0;
+      const step = (bytes) => { done += bytes; onProgress && onProgress(plan.bytes ? done / plan.bytes : null, t('Sposto i backup… {done} di {total}', { done: fmtSize(done), total: fmtSize(plan.bytes) })); };
+      const copied = [];
+      for (const name of top) {
+        const src = path.join(plan.from, name);
+        const dst = path.join(plan.to, name);
+        if (await exists(dst)) throw new Error(t('Nella nuova cartella esiste già "{name}": svuotala o scegline un\'altra.', { name }));
+        if (plan.sameDrive) {
+          try { await fsp.rename(src, dst); step((await dirStats(dst)).bytes); continue; } catch (e) { if (e.code !== 'EXDEV') throw e; }
+        }
+        await copyTree(src, dst, step);
+        copied.push(src);
+      }
+      // tutto copiato e verificato: ora si possono togliere gli originali
+      for (const src of copied) await fsp.rm(src, { recursive: true, force: true });
+      await fsp.rmdir(plan.from).catch(() => {});
+      await this.store.saveConfig({ backupsDir: plan.to });
+      return { to: plan.to, bytes: plan.bytes, files: plan.files };
+    } finally {
+      this.moving = false;
+    }
   }
 
   async remove(id, file) {
@@ -159,4 +245,57 @@ class BackupManager {
   }
 }
 
-module.exports = { BackupManager };
+// ---------- utilità per lo spostamento ----------
+async function dirStats(dir) {
+  let bytes = 0; let files = 0;
+  const walk = async (d) => {
+    for (const e of await fsp.readdir(d, { withFileTypes: true }).catch(() => [])) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) await walk(p);
+      else if (e.isFile()) { files++; bytes += (await fsp.stat(p)).size; }
+    }
+  };
+  const st = await fsp.stat(dir).catch(() => null);
+  if (st && st.isFile()) return { bytes: st.size, files: 1 };
+  if (st) await walk(dir);
+  return { bytes, files };
+}
+
+async function copyTree(src, dst, step) {
+  const st = await fsp.stat(src);
+  if (st.isDirectory()) {
+    await fsp.mkdir(dst, { recursive: true });
+    for (const name of await fsp.readdir(src)) await copyTree(path.join(src, name), path.join(dst, name), step);
+    return;
+  }
+  await fsp.copyFile(src, dst);
+  const copy = await fsp.stat(dst);
+  if (copy.size !== st.size) throw new Error(t('Copia non riuscita per {file}: i backup originali non sono stati toccati.', { file: path.basename(src) }));
+  step(st.size);
+}
+
+async function existingParent(p) {
+  let cur = p;
+  while (!(await exists(cur))) {
+    const up = path.dirname(cur);
+    if (up === cur) break;
+    cur = up;
+  }
+  return cur;
+}
+
+async function sameDevice(a, b) {
+  try {
+    const [sa, sb] = await Promise.all([fsp.stat(await existingParent(a)), fsp.stat(await existingParent(b))]);
+    return sa.dev === sb.dev;
+  } catch (_) { return false; }
+}
+
+function fmtSize(n) {
+  if (n === null || n === undefined) return '?';
+  const u = ['B', 'KB', 'MB', 'GB', 'TB']; let i = 0; let v = Number(n);
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v < 10 && i ? 1 : 0)} ${u[i]}`;
+}
+
+module.exports = { BackupManager, dirStats, sameDevice };

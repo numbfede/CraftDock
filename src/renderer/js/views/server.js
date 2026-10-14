@@ -287,7 +287,7 @@ function renderServerSettings(body, s) {
   const aikar = h('input', { type: 'checkbox', checked: s.aikarFlags });
   const autoRestart = h('input', { type: 'checkbox', checked: s.autoRestart });
   const backupEvery = h('select.input', [[0, t('Disattivati')], [15, t('Ogni 15 minuti')], [30, t('Ogni 30 minuti')], [60, t('Ogni ora')], [120, t('Ogni 2 ore')], [360, t('Ogni 6 ore')]].map(([v, l]) => h('option', { value: v, selected: Number(s.autoBackupMinutes) === v }, l)));
-  const keep = h('input.input', { type: 'number', min: 1, max: 200, value: s.backupKeep || 10 });
+  const keep = h('input.input', { type: 'number', min: 0, max: 200, value: s.backupKeep === 0 ? 0 : (s.backupKeep || 10), title: t('0 = non eliminare mai') });
   const onStop = h('input', { type: 'checkbox', checked: s.backupOnStop });
   const javaSel = h('select.input', h('option', { value: '' }, t('Automatico (Java {v}, scaricato se manca)', { v: s.javaMajor || '?' })));
   api('java:list').then((list) => {
@@ -298,7 +298,7 @@ function renderServerSettings(body, s) {
     const patch = {
       name: name.value.trim() || s.name, ramMb: ram.getValue(), port: Number(port.value) || 25565, publicAddress: pub.value.trim(),
       jvmArgs: jvm.value.trim(), aikarFlags: aikar.checked, autoRestart: autoRestart.checked, autoBackupMinutes: Number(backupEvery.value),
-      backupKeep: Number(keep.value) || 10, backupOnStop: onStop.checked, javaPath: javaSel.value,
+      backupKeep: keep.value === '' ? 10 : Math.max(0, Number(keep.value) || 0), backupOnStop: onStop.checked, javaPath: javaSel.value,
     };
     if (await run(() => api('servers:update', s.id, patch), running ? t('Salvato: RAM, Java e porta valgono dal prossimo avvio') : t('Impostazioni salvate'))) await refreshServers();
   } });
@@ -320,7 +320,7 @@ function renderServerSettings(body, s) {
     h('label.check', autoRestart, h('div', h('div', t('Riavvio automatico in caso di crash')), h('.small.muted', t('Massimo 3 tentativi in 10 minuti.'))))));
 
   body.appendChild(h('.card', h('.card-head', h('h2', t('Backup'))),
-    h('.grid-2', h('.field', h('label', t('Backup automatici (mentre è acceso)')), backupEvery), h('.field', h('label', t('Backup automatici da conservare')), keep)),
+    h('.grid-2', h('.field', h('label', t('Backup automatici (mentre è acceso)')), backupEvery), h('.field', h('label', t('Backup da conservare (0 = tutti)')), keep)),
     h('.spacer'),
     h('label.check', onStop, h('span', t('Fai un backup ogni volta che il server viene spento')))));
 
