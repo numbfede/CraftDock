@@ -3,7 +3,7 @@
 Ogni versione ha le note in italiano e in inglese. Il workflow Release usa la sezione della
 versione in `package.json` come testo della release su GitHub, e il sito la mostra nella pagina Novità.
 
-## 1.2.0 (2026-10-12)
+## 1.2.1 (2026-10-24)
 
 ### Italiano
 - **Versione per macOS** (Apple Silicon e Intel, macOS 11 o successivo). Su Mac l'agente playit.gg si prepara una volta dalla pagina Connessione amici.
@@ -17,6 +17,7 @@ versione in `package.json` come testo della release su GitHub, e il sito la most
 - Avvisi di playit.gg (verifica email) tradotti e spiegati; il pulsante "Crea indirizzo" ricompare per i server senza tunnel.
 - **Sposta i backup su un altro disco.** In Impostazioni → Backup (o dalla scheda Backup) scegli una nuova cartella, anche su un disco esterno: CraftDock mostra quanto spazio serve, chiede conferma, copia e verifica i backup e solo alla fine cancella gli originali.
 - **Eliminazione automatica dei backup vecchi.** Nella scheda Backup scegli quanti tenerne (3, 5, 10, 20, 50 o tutti) e se contare anche quelli manuali.
+- Corretti due difetti grafici nella creazione da modpack (pulsante "Scegli file…" e etichetta accanto a CurseForge).
 - Il registro dell'app viene salvato su file, utile quando qualcosa va storto.
 - Installer con nome fisso: il link di download del sito porta sempre all'ultima versione.
 
@@ -32,6 +33,7 @@ versione in `package.json` come testo della release su GitHub, e il sito la most
 - playit.gg notices (email verification) are translated and explained; the "Create address" button shows again for servers without a tunnel.
 - **Move backups to another drive.** In Settings → Backups (or from the Backups tab) pick a new folder, even on an external drive: CraftDock shows the space needed, asks for confirmation, copies and verifies the backups and only then deletes the originals.
 - **Automatic deletion of old backups.** In the Backups tab choose how many to keep (3, 5, 10, 20, 50 or all) and whether manual ones count too.
+- Fixed two visual glitches when creating from a modpack (the "Choose file…" button and the label next to CurseForge).
 - The app log is saved to a file, handy when something goes wrong.
 - Fixed installer name: the website download link always points to the latest version.
 
