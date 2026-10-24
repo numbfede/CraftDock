@@ -1166,6 +1166,52 @@
     "Backup da conservare (0 = tutti)": "Backups to keep (0 = all)",
   });
 
+  // ---------- profiles ----------
+  add({
+    "Profilo non trovato: aggiorna l'elenco": "Profile not found: refresh the list",
+    "Non riesco a capire versione e loader di questo profilo.": "I can't work out this profile's version and loader.",
+    "Dal profilo \"{name}\": {on} mod sul server, {off} solo per il gioco (nel pacchetto amici).": "From profile \"{name}\": {on} mods on the server, {off} game-only (in the friends pack).",
+    "Analizzo il profilo": "Analysing the profile",
+    "Leggo le mod… {i} di {n}": "Reading mods… {i} of {n}",
+    "Controllo le mod su Modrinth…": "Checking mods on Modrinth…",
+    "Analisi del profilo non trovata: riaprila e riprova": "Profile analysis not found: open it again and retry",
+    "Copio le mod… {i} di {n}": "Copying mods… {i} of {n}",
+    "Dal tuo launcher": "From your launcher",
+    "Le mod che usi già per giocare": "The mods you already play with",
+    "CraftDock cerca i profili di: launcher ufficiale di Minecraft, Modrinth App, Prism Launcher, CurseForge e ATLauncher.": "CraftDock looks for profiles in: the official Minecraft launcher, Modrinth App, Prism Launcher, CurseForge and ATLauncher.",
+    "Scegli il profilo che usi per giocare: CraftDock crea un server con la stessa versione, lo stesso loader e le mod che servono, e tiene da parte quelle solo da gioco per il pacchetto amici.": "Pick the profile you play with: CraftDock creates a server with the same version, the same loader and the mods it needs, and keeps the game-only ones aside for the friends pack.",
+    "Lunar Client trovato.": "Lunar Client found.",
+    "Le sue funzioni (HUD, zoom, FPS…) sono integrate e servono solo nel gioco, quindi non c'è niente da portare sul server. Per i server con mod usa un profilo di Modrinth App, Prism o CurseForge.": "Its features (HUD, zoom, FPS…) are built in and only matter in the game, so there's nothing to bring to the server. For modded servers use a Modrinth App, Prism or CurseForge profile.",
+    "Nessun profilo con mod trovato": "No modded profile found",
+    "Cerca di nuovo": "Search again",
+    "versione non riconosciuta": "version not recognised",
+    "Versione dedotta dalle mod del profilo": "Version worked out from the profile's mods",
+    "dedotta": "guessed",
+    "Cerco i profili dei tuoi launcher…": "Looking for your launcher profiles…",
+    "Analizzo {n} mod…": "Analysing {n} mods…",
+    "Controllo su Modrinth dove serve ogni mod: sul server, nel gioco o in entrambi.": "Checking on Modrinth where each mod belongs: server, game or both.",
+    "Sul server": "On the server",
+    "Aggiungono contenuti o servono anche al server.": "They add content or the server needs them too.",
+    "Da controllare": "To check",
+    "Non sono su Modrinth e il file non dice dove servono: di solito vanno messe. Se il server non parte, togli quelle grafiche o di interfaccia.": "They're not on Modrinth and the file doesn't say where they belong: usually they should go in. If the server doesn't start, remove the graphics or interface ones.",
+    "Solo nel gioco": "Game only",
+    "Grafica, interfaccia, minimappe, shader loader: sul server non servono e alcune lo farebbero crashare. Finiscono nel pacchetto amici.": "Graphics, interface, minimaps, shader loaders: the server doesn't need them and some would crash it. They go in the friends pack.",
+    "{n} mod sul server": "{n} mods on the server",
+    "Altri profili": "Other profiles",
+    "Modrinth non è raggiungibile: la divisione si basa solo sui file delle mod, controlla bene l'elenco.": "Modrinth can't be reached: the split is based only on the mod files, check the list carefully.",
+    "solo server": "server only",
+    "Nessuno": "None",
+    "Mondo nuovo": "New world",
+    "Metti nel pacchetto amici anche {s} shader e {r} resource pack del profilo": "Also put the profile's {s} shaders and {r} resource packs in the friends pack",
+    "Puoi partire da un mondo in single player di questo profilo.": "You can start from a singleplayer world of this profile.",
+    "Questo profilo non ha mondi in single player.": "This profile has no singleplayer worlds.",
+    "Resource pack del server": "Server resource pack",
+    "Chi entra lo riceve in automatico (solo pack pubblicati su Modrinth).": "Players get it automatically when they join (only packs published on Modrinth).",
+    "Nessun resource pack del profilo è su Modrinth: si possono passare col pacchetto amici.": "None of the profile's resource packs is on Modrinth: you can share them with the friends pack.",
+    "Crea server dal profilo": "Create server from profile",
+    "{name} è pronto! Per gli amici: scheda Mod → \"Pacchetto amici\".": "{name} is ready! For friends: Mods tab → \"Friends pack\".",
+  });
+
   // @@END
 
   if (typeof module !== 'undefined' && module.exports) module.exports = EN;

@@ -119,12 +119,14 @@ function openWizard(initialMode = 'new') {
     const sources = [
       ['new', 'plus', t('Nuovo server'), t('Vanilla, Fabric, Forge, NeoForge, Paper…')],
       ['pack', 'package', t('Da un modpack'), t('Modrinth, CurseForge o file .mrpack/.zip')],
+      ['profile', 'play', t('Dal tuo launcher'), t('Le mod che usi già per giocare')],
       ['import', 'folder', t('Importa cartella'), t('Un server che hai già sul PC')],
     ];
     m.body.appendChild(h('.source-grid', sources.map(([id, ic, title, desc]) =>
       h('.source-card' + (mode === id ? '.sel' : ''), { onclick: () => { mode = id; draw(); } }, icon(ic), h('.tn', title), h('.td', desc)))));
     if (mode === 'new') drawNew(m);
     else if (mode === 'pack') drawPack(m);
+    else if (mode === 'profile') drawProfile(m);
     else drawImport(m);
   };
   draw();
@@ -346,4 +348,142 @@ function openWorldPicker(onPick) {
       list.appendChild(item);
     }
   }).catch(errToast);
+}
+
+/**
+ * Server dal profilo di un launcher: trova i profili, divide le mod in "sul server" /
+ * "da controllare" / "solo nel gioco" e crea il server con la stessa versione e lo stesso loader.
+ */
+function drawProfile(m) {
+  const box = h('div');
+  const foot = h('div', { style: { display: 'contents' } });
+  m.body.appendChild(box);
+  let analysis = null;
+  let profilesList = [];
+  const LAUNCHER_HINT = t('CraftDock cerca i profili di: launcher ufficiale di Minecraft, Modrinth App, Prism Launcher, CurseForge e ATLauncher.');
+
+  const typeLabel = (p) => `${(App.info.types[p.type] || {}).name || p.type || '?'} ${p.mcVersion || '?'}`;
+
+  const drawList = (res) => {
+    box.innerHTML = '';
+    profilesList = res.profiles;
+    box.appendChild(h('p.small.muted', { style: { marginTop: 0 } }, t('Scegli il profilo che usi per giocare: CraftDock crea un server con la stessa versione, lo stesso loader e le mod che servono, e tiene da parte quelle solo da gioco per il pacchetto amici.')));
+    if (res.lunar) box.appendChild(h('.info-note', icon('info'), h('div', h('strong', t('Lunar Client trovato.')), ' ', t('Le sue funzioni (HUD, zoom, FPS…) sono integrate e servono solo nel gioco, quindi non c\'è niente da portare sul server. Per i server con mod usa un profilo di Modrinth App, Prism o CurseForge.'))));
+    if (!res.profiles.length) {
+      box.appendChild(h('.empty', icon('play'), h('.t', t('Nessun profilo con mod trovato')), h('div', LAUNCHER_HINT), h('.spacer'),
+        btn(t('Cerca di nuovo'), { cls: 'sm', icon: 'refresh', onclick: load })));
+      return;
+    }
+    const list = h('.list', { style: { maxHeight: '360px', overflowY: 'auto' } });
+    for (const p of res.profiles) {
+      const bad = !p.type || !p.mcVersion;
+      list.appendChild(h('.list-item' + (bad ? '.disabled' : ''), { style: { cursor: bad ? 'default' : 'pointer' }, onclick: bad ? null : () => analyze(p) },
+        h('.li-icon', icon('play')),
+        h('.li-main',
+          h('.li-title', p.name, h('span.tag', p.launcher), bad ? h('span.tag.yellow', t('versione non riconosciuta')) : h('span.tag.green', typeLabel(p)), p.guess && !bad ? h('span.tag', { title: t('Versione dedotta dalle mod del profilo') }, t('dedotta')) : null),
+          h('.li-sub', `${tn(p.modCount, '{n} mod', '{n} mod')} · ${p.gameDir}`)),
+        bad ? null : btn(t('Scegli'), { cls: 'sm', icon: 'arrowRight', onclick: (e) => { e.stopPropagation(); analyze(p); } })));
+    }
+    box.appendChild(h('.card', { style: { padding: 0 } }, list));
+    box.appendChild(h('.small.muted', { style: { marginTop: '10px' } }, LAUNCHER_HINT));
+  };
+
+  const load = async () => {
+    box.innerHTML = '';
+    m.foot.innerHTML = '';
+    m.foot.append(btn(t('Annulla'), { onclick: m.close }));
+    box.appendChild(h('.empty', icon('search'), h('.t', t('Cerco i profili dei tuoi launcher…'))));
+    const res = await run(() => api('profiles:scan'));
+    if (res) drawList(res);
+  };
+
+  const analyze = async (p) => {
+    box.innerHTML = '';
+    box.appendChild(h('.empty', icon('puzzle'), h('.t', t('Analizzo {n} mod…', { n: p.modCount })), h('div', t('Controllo su Modrinth dove serve ogni mod: sul server, nel gioco o in entrambi.'))));
+    analysis = await run(() => api('profiles:analyze', p.id));
+    if (!analysis) { drawList({ profiles: profilesList }); return; }
+    drawAnalysis();
+  };
+
+  const drawAnalysis = () => {
+    const a = analysis;
+    const p = a.profile;
+    box.innerHTML = '';
+    const checks = new Map();
+    const groups = [
+      ['server', t('Sul server'), t('Aggiungono contenuti o servono anche al server.'), (x) => x.side === 'both' || x.side === 'server', true],
+      ['check', t('Da controllare'), t('Non sono su Modrinth e il file non dice dove servono: di solito vanno messe. Se il server non parte, togli quelle grafiche o di interfaccia.'), (x) => x.side === 'check', true],
+      ['client', t('Solo nel gioco'), t('Grafica, interfaccia, minimappe, shader loader: sul server non servono e alcune lo farebbero crashare. Finiscono nel pacchetto amici.'), (x) => x.side === 'client', false],
+    ];
+    const counter = h('span.muted');
+    const updCount = () => { counter.textContent = t('{n} mod sul server', { n: [...checks.values()].filter((c) => c.checked).length }); };
+    box.appendChild(h('.row', { style: { gap: '10px', marginBottom: '12px', flexWrap: 'wrap' } },
+      btn(t('Altri profili'), { cls: 'sm ghost', icon: 'arrowRight', onclick: () => drawList({ profiles: profilesList }) }),
+      h('strong', p.name), h('span.tag', p.launcher), h('span.tag.green', typeLabel(p)), p.loaderVersion ? h('span.tag', `loader ${p.loaderVersion}`) : null, h('span.grow'), counter));
+    if (!a.online) box.appendChild(h('.locked-note', icon('alert'), t('Modrinth non è raggiungibile: la divisione si basa solo sui file delle mod, controlla bene l\'elenco.')));
+    const lists = h('div', { style: { maxHeight: '330px', overflowY: 'auto', paddingRight: '4px' } });
+    for (const [key, title, desc, filter, def] of groups) {
+      const items = a.mods.filter(filter);
+      if (!items.length) continue;
+      const list = h('.list');
+      for (const it of items) {
+        const cb = h('input', { type: 'checkbox', checked: def });
+        cb.addEventListener('change', updCount);
+        checks.set(it.file, cb);
+        list.appendChild(h('label.list-item', { style: { cursor: 'pointer' } },
+          cb,
+          h('.li-icon', it.icon ? h('img', { src: it.icon }) : icon('puzzle')),
+          h('.li-main', h('.li-title', it.title || it.name, it.version ? h('span.small.muted', it.version) : null, it.side === 'server' ? h('span.tag.blue', t('solo server')) : null, it.reason === 'modrinth' ? h('span.tag.green', 'Modrinth') : null),
+            h('.li-sub', it.file))));
+      }
+      lists.appendChild(h('div', { style: { marginBottom: '14px' } },
+        h('.row', { style: { gap: '8px', alignItems: 'baseline' } }, h('h3', { style: { margin: '0 0 2px' } }, title), h('span.muted.small', String(items.length))),
+        h('.small.muted', { style: { marginBottom: '8px' } }, desc),
+        h('.card', { style: { padding: 0 } }, list)));
+    }
+    box.appendChild(lists);
+    updCount();
+
+    // shader, resource pack e mondo
+    const extrasCb = h('input', { type: 'checkbox', checked: true });
+    const rpOnModrinth = a.resourcepacks.filter((r) => r.modrinth);
+    const rpSel = h('select.input', h('option', { value: '' }, t('Nessuno')), rpOnModrinth.map((r) => h('option', { value: r.name }, r.name)));
+    const worldSel = h('select.input', h('option', { value: '' }, t('Mondo nuovo')), a.worlds.map((w) => h('option', { value: w.path }, w.name)));
+    const extraBits = [];
+    if (a.shaders.length || a.resourcepacks.length) {
+      extraBits.push(h('label.check', extrasCb, h('span', t('Metti nel pacchetto amici anche {s} shader e {r} resource pack del profilo', { s: a.shaders.length, r: a.resourcepacks.length }))));
+    }
+    const name = h('input.input', { value: p.name.slice(0, 40), maxlength: 40 });
+    const sug = a.mods.length > 150 ? 8192 : a.mods.length > 80 ? 6144 : a.mods.length > 25 ? 4096 : 3072;
+    const ram = ramField(Math.max(App.info.config.defaultRamMb, sug));
+    const eula = eulaCheck();
+    box.appendChild(h('div', { style: { marginTop: '6px' } },
+      h('.grid-2',
+        h('.field', h('label', t('Mondo')), worldSel, h('.hint', a.worlds.length ? t('Puoi partire da un mondo in single player di questo profilo.') : t('Questo profilo non ha mondi in single player.'))),
+        h('.field', h('label', t('Resource pack del server')), rpSel, h('.hint', rpOnModrinth.length ? t('Chi entra lo riceve in automatico (solo pack pubblicati su Modrinth).') : t('Nessun resource pack del profilo è su Modrinth: si possono passare col pacchetto amici.')))),
+      extraBits.length ? h('div', { style: { marginTop: '10px' } }, extraBits) : null,
+      h('.spacer'),
+      h('.grid-2', h('.field', h('label', t('Nome del server')), name), ram),
+      h('.spacer'),
+      eula));
+
+    m.foot.innerHTML = '';
+    const create = btn(t('Crea server dal profilo'), { cls: 'primary', icon: 'check', onclick: async () => {
+      if (!eula.isChecked()) return toast(t('Devi accettare la EULA di Minecraft'), 'warn');
+      const include = [...checks.entries()].filter(([, c]) => c.checked).map(([f]) => f);
+      m.close();
+      const created = await run(() => api('profiles:createServer', {
+        profileId: p.id, include, resourcePack: rpSel.value || null, extras: extrasCb.checked,
+        name: name.value.trim() || p.name, ramMb: ram.getValue(), eula: true, worldSource: worldSel.value || null,
+      }));
+      if (created) {
+        await refreshServers();
+        selectServer(created.id, 'console');
+        toast(t('{name} è pronto! Per gli amici: scheda Mod → "Pacchetto amici".', { name: created.name }), 'ok', 9000);
+      }
+    } });
+    m.foot.append(btn(t('Annulla'), { onclick: m.close }), create);
+  };
+
+  load();
 }

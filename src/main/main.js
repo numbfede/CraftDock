@@ -14,6 +14,7 @@ const { ServerManager, findFreePort } = require('./serverManager');
 const { WorldManager } = require('./worlds');
 const { BackupManager, dirStats } = require('./backups');
 const { ModManager } = require('./mods');
+const { ProfileScanner } = require('./profiles');
 const { PlayitManager, networkInfo } = require('./tunnel');
 const properties = require('./properties');
 const { slugify, exists, uid, getJson, readJson, writeJson, httpRequest, copyDir } = require('./util');
@@ -28,7 +29,7 @@ const ICON = path.join(__dirname, '..', 'renderer', 'assets', 'icon.png');
 let win = null;
 let tray = null;
 let quitting = false;
-let store; let java; let servers; let worlds; let backups; let mods; let playit; let updater; let scheduler;
+let store; let java; let servers; let worlds; let backups; let mods; let playit; let updater; let scheduler; let profiles;
 
 // cartella dati alternativa (utile per test o per un'installazione portatile)
 if (process.env.CRAFTDOCK_DATA) app.setPath('userData', process.env.CRAFTDOCK_DATA);
@@ -128,6 +129,7 @@ async function createServer(opts) {
         if (r.disabled.length) servers.info(server.id, t('Mod solo-client disattivate automaticamente: {p0}', { p0: r.disabled.join(', ') }));
         r.warnings.forEach((w) => servers.info(server.id, '⚠ ' + w));
       }
+      if (opts.afterInstall) await opts.afterInstall(store.get(server.id), progress);
     });
     servers.setStatus(server.id, 'stopped');
     servers.info(server.id, t('Installazione completata. Premi Avvia!'));
@@ -176,6 +178,22 @@ async function importServerFolder({ dir, name, copy, install }) {
     }
   }
   return serverView(store.get(s.id));
+}
+
+/** Server da un profilo del launcher: stessa versione e loader, mod giuste, il resto per gli amici. */
+async function createFromProfile({ profileId, include, resourcePack, extras, ...opts }) {
+  const p = profiles.get(profileId);
+  if (!p) throw new Error(t('Profilo non trovato: aggiorna l\'elenco'));
+  if (!p.type || !p.mcVersion) throw new Error(t('Non riesco a capire versione e loader di questo profilo.'));
+  return createServer(Object.assign({}, opts, {
+    type: p.type, mcVersion: p.mcVersion, loaderVersion: p.loaderVersion || null, difficulty: opts.difficulty || 'normal',
+    afterInstall: async (server, progress) => {
+      const r = await profiles.applyToServer(server, profileId, { include, resourcePack, extras }, progress);
+      if (r.props) await properties.update(path.join(server.dir, 'server.properties'), r.props);
+      const off = r.copied - include.length;
+      servers.info(server.id, t('Dal profilo "{name}": {on} mod sul server, {off} solo per il gioco (nel pacchetto amici).', { name: p.name, on: include.length, off }));
+    },
+  }));
 }
 
 async function createFromPack(packFile, info, opts) {
@@ -500,8 +518,12 @@ function registerIpc() {
   handle('mods:disableClientOnly', (id) => mods.disableClientOnly(needServer(id)));
   handle('mods:friendsInfo', async (id) => {
     const r = await mods.friendsMods(needServer(id));
-    return { count: r.include.length, mods: r.include.map((m) => m.label), skipped: r.skipped };
+    return { count: r.include.length, mods: r.include.map((m) => m.label), skipped: r.skipped, extras: r.extras.map((x) => x.name) };
   });
+  // Profili dei launcher
+  handle('profiles:scan', () => profiles.scan());
+  handle('profiles:analyze', (id) => withTask(t('Analizzo il profilo'), (p) => profiles.analyze(id, { onProgress: p })));
+  handle('profiles:createServer', (opts) => createFromProfile(opts));
   handle('mods:exportFriendsPack', async (id, format) => {
     const s = needServer(id);
     const ext = format === 'zip' ? 'zip' : 'mrpack';
@@ -710,6 +732,7 @@ app.whenReady().then(async () => {
   worlds = new WorldManager(store);
   backups = new BackupManager(store, servers);
   mods = new ModManager(store);
+  profiles = new ProfileScanner(mods);
   playit = new PlayitManager(store, { appVersion: app.getVersion(), openExternal: (url) => shell.openExternal(url) });
   updater = new Updater({ currentVersion: app.getVersion(), isPackaged: app.isPackaged, store });
   scheduler = new Scheduler({ store, servers, backups });

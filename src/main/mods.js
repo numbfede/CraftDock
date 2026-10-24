@@ -397,8 +397,9 @@ class ModManager {
    * più le mod solo-client che CraftDock ha disattivato sul server (shader, minimappe dei modpack…).
    */
   async friendsMods(server) {
-    if (folderFor(server) !== 'mods' || server.type === 'vanilla') return { include: [], skipped: [] };
+    if (folderFor(server) !== 'mods' || server.type === 'vanilla') return { include: [], skipped: [], extras: [] };
     const dir = this.dir(server);
+    const track = await this.track(server);
     const include = []; const skipped = [];
     for (const f of (await fsp.readdir(dir).catch(() => [])).sort()) {
       if (!/\.jar(\.disabled)?$/i.test(f)) continue;
@@ -406,14 +407,23 @@ class ModManager {
       const meta = await this.readJarMeta(full);
       const name = f.replace(/\.disabled$/i, '');
       const label = meta.name || name;
+      const tr = track[name] || {};
       if (f.endsWith('.disabled')) {
-        if (meta.environment === 'client' || CLIENT_ONLY_RE.test(name)) include.push({ file: full, name, label });
+        // disattivate sul server: si passano agli amici solo se sono mod da gioco (solo client)
+        if (tr.clientOnly || meta.environment === 'client' || CLIENT_ONLY_RE.test(name)) include.push({ file: full, name, label });
         continue;
       }
-      if (meta.environment === 'server') { skipped.push(label); continue; }
+      if (meta.environment === 'server' || tr.serverOnly) { skipped.push(label); continue; }
       include.push({ file: full, name, label });
     }
-    return { include, skipped };
+    // shader e resource pack portati da un profilo del launcher (cartella client-extras del server)
+    const extras = [];
+    for (const sub of ['shaderpacks', 'resourcepacks']) {
+      for (const e of await fsp.readdir(path.join(server.dir, 'client-extras', sub)).catch(() => [])) {
+        extras.push({ path: path.join(server.dir, 'client-extras', sub, e), name: `${sub}/${e}` });
+      }
+    }
+    return { include, skipped, extras };
   }
 
   /**
@@ -422,12 +432,12 @@ class ModManager {
    * indicate con il loro link, le altre sono incluse nel file. format 'zip': solo i .jar da mettere in mods.
    */
   async exportFriendsPack(server, outFile, { format = 'mrpack', onProgress } = {}) {
-    const { include, skipped } = await this.friendsMods(server);
-    if (!include.length) throw new Error(t('Questo server non ha mod da passare agli amici: basta Minecraft {mcVersion}.', { mcVersion: server.mcVersion }));
+    const { include, skipped, extras } = await this.friendsMods(server);
+    if (!include.length && !extras.length) throw new Error(t('Questo server non ha mod da passare agli amici: basta Minecraft {mcVersion}.', { mcVersion: server.mcVersion }));
     onProgress && onProgress(null, t('Preparo il pacchetto…'));
     if (format === 'zip') {
-      await zip.createZip(outFile, include.map((m) => ({ path: m.file, name: `mods/${m.name}` })));
-      return { file: outFile, count: include.length, linked: 0, skipped };
+      await zip.createZip(outFile, include.map((m) => ({ path: m.file, name: `mods/${m.name}` })).concat(extras.map((x) => ({ path: x.path, name: x.name }))));
+      return { file: outFile, count: include.length, extras: extras.length, linked: 0, skipped };
     }
     // cerca su Modrinth le mod per hash: quelle trovate si scaricano da lì, le altre vanno nel pacchetto
     const bySha1 = new Map();
@@ -457,11 +467,13 @@ class ModManager {
     try {
       const indexFile = path.join(tmpDir, 'modrinth.index.json');
       await fsp.writeFile(indexFile, JSON.stringify(index, null, 2));
-      await zip.createZip(outFile, [{ path: indexFile, name: 'modrinth.index.json' }].concat(overrides.map((m) => ({ path: m.file, name: `overrides/mods/${m.name}` }))));
+      await zip.createZip(outFile, [{ path: indexFile, name: 'modrinth.index.json' }]
+        .concat(overrides.map((m) => ({ path: m.file, name: `overrides/mods/${m.name}` })))
+        .concat(extras.map((x) => ({ path: x.path, name: `overrides/${x.name}` }))));
     } finally {
       await fsp.rm(tmpDir, { recursive: true, force: true });
     }
-    return { file: outFile, count: include.length, linked: files.length, skipped, loaderMissing: !!LOADER_DEP[server.type] && !loaderVersion };
+    return { file: outFile, count: include.length, extras: extras.length, linked: files.length, skipped, loaderMissing: !!LOADER_DEP[server.type] && !loaderVersion };
   }
 
   /** Versione del loader per i server importati (non registrata da CraftDock): cartella libraries, poi l'ultima stabile. */

@@ -400,6 +400,87 @@ test('backup: regola "tieni gli ultimi N" e spostamento della cartella', async (
   }
 });
 
+test('profili dei launcher: lettura, divisione delle mod e server con pacchetto amici', async () => {
+  const { ProfileScanner, parseVersionId, neoToMc, classify } = require('../src/main/profiles');
+  assert.deepStrictEqual(parseVersionId('fabric-loader-0.16.14-1.21.1'), { type: 'fabric', loaderVersion: '0.16.14', mcVersion: '1.21.1' });
+  assert.deepStrictEqual(parseVersionId('1.20.1-forge-47.2.0'), { type: 'forge', mcVersion: '1.20.1', loaderVersion: '47.2.0' });
+  assert.strictEqual(neoToMc('21.1.77'), '1.21.1');
+  assert.strictEqual(neoToMc('20.4.200'), '1.20.4');
+  assert.strictEqual(classify({}, { client_side: 'required', server_side: 'unsupported' }, 'x.jar').side, 'client');
+  assert.strictEqual(classify({}, { client_side: 'unsupported', server_side: 'required' }, 'x.jar').side, 'server');
+  assert.strictEqual(classify({}, { client_side: 'required', server_side: 'required' }, 'x.jar').side, 'both');
+  assert.strictEqual(classify({ environment: '*' }, null, 'iris-1.8.jar').side, 'client');
+
+  const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'craftdock-prof-'));
+  const oldEnv = { APPDATA: process.env.APPDATA, HOME: process.env.HOME };
+  try {
+    process.env.HOME = path.join(tmp, 'home');
+    process.env.APPDATA = path.join(tmp, 'Roaming');
+    const mkJar = async (file, meta) => {
+      const d = path.join(tmp, 'b-' + path.basename(file));
+      await fsp.mkdir(d, { recursive: true });
+      await fsp.writeFile(path.join(d, 'fabric.mod.json'), JSON.stringify(meta));
+      await zip.createZip(file, [{ path: path.join(d, 'fabric.mod.json'), name: 'fabric.mod.json' }]);
+    };
+    // Prism
+    const inst = path.join(process.env.APPDATA, 'PrismLauncher', 'instances', 'Avventura');
+    await fsp.mkdir(path.join(inst, '.minecraft', 'mods'), { recursive: true });
+    await fsp.writeFile(path.join(inst, 'instance.cfg'), 'name=Avventura con amici\n');
+    await fsp.writeFile(path.join(inst, 'mmc-pack.json'), JSON.stringify({ components: [{ uid: 'net.minecraft', version: '1.21.1' }, { uid: 'net.fabricmc.fabric-loader', version: '0.16.14' }] }));
+    const pm = path.join(inst, '.minecraft', 'mods');
+    await mkJar(path.join(pm, 'create.jar'), { id: 'create', name: 'Create', version: '6.0', environment: '*' });
+    await mkJar(path.join(pm, 'sodium.jar'), { id: 'sodium', name: 'Sodium', version: '0.6', environment: 'client' });
+    await mkJar(path.join(pm, 'ledger.jar'), { id: 'ledger', name: 'Ledger', version: '1.3', environment: 'server' });
+    await fsp.mkdir(path.join(inst, '.minecraft', 'shaderpacks'), { recursive: true });
+    await fsp.writeFile(path.join(inst, '.minecraft', 'shaderpacks', 'Complementary.zip'), 'x');
+    await fsp.mkdir(path.join(inst, '.minecraft', 'saves', 'Mondo1'), { recursive: true });
+    await fsp.writeFile(path.join(inst, '.minecraft', 'saves', 'Mondo1', 'level.dat'), 'x');
+    // launcher ufficiale
+    const mc = path.join(process.env.APPDATA, '.minecraft');
+    await fsp.mkdir(path.join(mc, 'mods'), { recursive: true });
+    await mkJar(path.join(mc, 'mods', 'jei.jar'), { id: 'jei', name: 'JEI', version: '19', environment: '*' });
+    await fsp.writeFile(path.join(mc, 'launcher_profiles.json'), JSON.stringify({ profiles: { a: { name: 'fabric-loader-1.21.1', lastVersionId: 'fabric-loader-0.16.14-1.21.1', type: 'custom' }, b: { name: 'Vanilla', lastVersionId: 'latest-release', type: 'latest-release' } } }));
+    // CurseForge
+    const cf = path.join(process.env.HOME, 'curseforge', 'minecraft', 'Instances', 'All the Mods');
+    await fsp.mkdir(path.join(cf, 'mods'), { recursive: true });
+    await mkJar(path.join(cf, 'mods', 'a.jar'), { id: 'a', name: 'A', version: '1', environment: '*' });
+    await fsp.writeFile(path.join(cf, 'minecraftinstance.json'), JSON.stringify({ name: 'All the Mods', gameVersion: '1.20.1', baseModLoader: { name: 'forge-47.3.0', minecraftVersion: '1.20.1' } }));
+
+    const mm = new ModManager({ config: {} });
+    const ps = new ProfileScanner(mm);
+    const { profiles } = await ps.scan();
+    const by = Object.fromEntries(profiles.map((p) => [p.launcher, p]));
+    assert.strictEqual(profiles.length, 3);
+    assert.deepStrictEqual([by['Prism Launcher'].name, by['Prism Launcher'].type, by['Prism Launcher'].mcVersion, by['Prism Launcher'].loaderVersion], ['Avventura con amici', 'fabric', '1.21.1', '0.16.14']);
+    assert.deepStrictEqual([by['Minecraft Launcher'].type, by['Minecraft Launcher'].mcVersion], ['fabric', '1.21.1']);
+    assert.deepStrictEqual([by.CurseForge.type, by.CurseForge.loaderVersion, by.CurseForge.mcVersion], ['forge', '47.3.0', '1.20.1']);
+
+    const a = await ps.analyze(by['Prism Launcher'].id);
+    const side = Object.fromEntries(a.mods.map((m) => [m.file, m.side]));
+    assert.deepStrictEqual(side, { 'create.jar': 'check', 'ledger.jar': 'server', 'sodium.jar': 'client' });
+    assert.strictEqual(a.shaders.length, 1);
+    assert.strictEqual(a.worlds.length, 1);
+
+    const server = { id: 'p1', dir: path.join(tmp, 'server'), type: 'fabric', mcVersion: '1.21.1', loaderVersion: '0.16.14', name: 'Avventura' };
+    await ps.applyToServer(server, by['Prism Launcher'].id, { include: ['create.jar', 'ledger.jar'], extras: true });
+    const files = (await fsp.readdir(path.join(server.dir, 'mods'))).filter((f) => !f.startsWith('.')).sort();
+    assert.deepStrictEqual(files, ['create.jar', 'ledger.jar', 'sodium.jar.disabled']);
+    const fm = await mm.friendsMods(server);
+    assert.deepStrictEqual(fm.include.map((m) => m.name).sort(), ['create.jar', 'sodium.jar']);
+    assert.deepStrictEqual(fm.extras.map((x) => x.name), ['shaderpacks/Complementary.zip']);
+    const out = path.join(tmp, 'amici.mrpack');
+    await mm.exportFriendsPack(server, out, { format: 'mrpack' });
+    const entries = await zip.listEntries(out);
+    assert.ok(entries.includes('overrides/shaderpacks/Complementary.zip'));
+    assert.ok(entries.includes('overrides/mods/sodium.jar'));
+    assert.ok(!entries.some((e) => /ledger/.test(e)));
+  } finally {
+    process.env.HOME = oldEnv.HOME;
+    if (oldEnv.APPDATA === undefined) delete process.env.APPDATA; else process.env.APPDATA = oldEnv.APPDATA;
+    await fsp.rm(tmp, { recursive: true, force: true });
+  }
+});
+
 test('playit: collegamento account, lettura tunnel e creazione automatica (API finta)', async () => {
   const http = require('http');
   const calls = [];
