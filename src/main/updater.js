@@ -17,7 +17,9 @@ const { t } = require('../shared/i18n');
 
 const REPO = 'numbfede/CraftDock';
 const API = process.env.CRAFTDOCK_UPDATE_API || `https://api.github.com/repos/${REPO}/releases/latest`;
-const DOWNLOAD_PAGE = process.platform === 'darwin' ? 'https://craftdock.numbfede.com/download/mac' : 'https://craftdock.numbfede.com/download';
+const DOWNLOAD_PAGE = process.platform === 'darwin'
+  ? `https://craftdock.numbfede.com/download/${process.arch === 'arm64' ? 'mac' : 'mac-intel'}`
+  : 'https://craftdock.numbfede.com/download';
 const NOTES_PAGE = 'https://craftdock.numbfede.com/novita';
 const EVERY_MS = 6 * 3600e3;
 

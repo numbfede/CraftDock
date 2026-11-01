@@ -29,6 +29,17 @@ jobs:
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Aggiungi l'installazione guidata agli zip per macOS
+        run: |
+          for arch in arm64 x64; do
+            z="dist/CraftDock-mac-$arch.zip"
+            rm -rf pkg && mkdir -p pkg/CraftDock
+            ditto -x -k "$z" pkg/CraftDock
+            cp "build/mac/Installa CraftDock.command" build/mac/LEGGIMI.txt pkg/CraftDock/
+            chmod +x "pkg/CraftDock/Installa CraftDock.command"
+            rm "$z"
+            (cd pkg && ditto -c -k --sequesterRsrc --keepParent CraftDock "../$z")
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: craftdock-mac

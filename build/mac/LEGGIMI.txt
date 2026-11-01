@@ -1,0 +1,27 @@
+CraftDock per macOS
+===================
+
+1. Fai clic destro su "Installa CraftDock.command" e scegli "Apri" (la prima volta macOS chiede conferma:
+   premi di nuovo "Apri"). Se macOS non mostra "Apri", vai in Impostazioni di Sistema > Privacy e sicurezza
+   e premi "Apri comunque".
+2. Lo script copia CraftDock in Applicazioni, toglie il blocco dei file scaricati e apre l'app.
+   Potrebbe chiedere la password del Mac.
+
+Perché serve: CraftDock non ha ancora la firma a pagamento di Apple (Developer ID), quindi macOS
+non lo apre con un doppio clic normale. Il codice è open source.
+
+Tunnel playit.gg su Mac: playit.gg non pubblica l'agente per macOS. Nella pagina "Connessione amici"
+premi "Prepara l'agente": si apre il Terminale e lo compila dal codice ufficiale (5-10 minuti la prima
+volta). Tailscale, ZeroTier e la rete di casa funzionano subito.
+
+Requisiti: macOS 11 o successivo.
+- Apple Silicon (M1, M2, M3, M4…): CraftDock-mac-arm64.zip
+- Intel: CraftDock-mac-x64.zip
+(Menu Apple > Informazioni su questo Mac > "Chip" = Apple Silicon, "Processore" Intel = Intel.)
+
+
+CraftDock for macOS
+-------------------
+Right-click "Installa CraftDock.command" > Open (confirm with Open). It copies CraftDock to Applications,
+clears the download quarantine and opens the app. For the playit.gg tunnel use "Prepare the agent"
+on the Friends connection page.
