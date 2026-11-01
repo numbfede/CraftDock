@@ -66,16 +66,16 @@ Con più server accesi insieme crea un tunnel per ciascuna porta e imposta l'ind
 
 ## CurseForge
 
-Il supporto a CurseForge è pronto nel codice ma **disattivato** finché l'app non ha una chiave API approvata: nell'interfaccia compare come "in arrivo". Gli utenti non devono configurare nulla.
+L'app **non contiene la chiave API di CurseForge**. Le richieste passano dal server del sito
+(`https://craftdock.numbfede.com/api/cf`), che aggiunge la chiave dal suo lato (variabile d'ambiente
+`CF_API_KEY` su Vercel) e accetta solo le chiamate che servono a CraftDock (ricerca, dettagli e file di
+mod e modpack Minecraft). Gli utenti non devono configurare nulla.
 
-La chiave non va mai committata (il repository è pubblico). Viene inserita solo al momento del build:
+Solo per lo sviluppo si può usare una chiave propria, e l'app parlerà direttamente con CurseForge:
 
 ```bat
-set CF_API_KEY=la-tua-chiave
-npm run dist
+set CF_API_KEY=la-tua-chiave && npm start
 ```
-
-`scripts/inject-cf-key.js` la scrive in `src/main/cf-key.json` (escluso da git) e l'installer generato ha CurseForge attivo. Senza la variabile il build esce con CurseForge disattivato. In sviluppo si può usare `set CF_API_KEY=... && npm start`.
 
 ## Dove finiscono i file
 

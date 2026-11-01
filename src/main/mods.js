@@ -11,6 +11,8 @@ const CF_BUILTIN_KEY = require('./curseforge-key');
 const { t } = require('../shared/i18n');
 const MR = 'https://api.modrinth.com/v2';
 const CF = 'https://api.curseforge.com/v1';
+const CF_PROXY = process.env.CRAFTDOCK_CF_PROXY || 'https://craftdock.numbfede.com/api/cf';
+const CRAFTDOCK_VERSION = require('../../package.json').version;
 const CF_GAME = 432;
 const CF_CLASS = { mod: 6, plugin: 5, modpack: 4471 };
 
@@ -38,12 +40,15 @@ class ModManager {
     this.metaCache = new Map();
   }
 
-  get cfKey() { return CF_BUILTIN_KEY; }
-  get cfEnabled() { return !!CF_BUILTIN_KEY; }
+  // CurseForge passa dal server di CraftDock, che aggiunge la chiave: l'app non la contiene.
+  // Con CF_API_KEY (solo sviluppo) si parla direttamente con api.curseforge.com.
+  get cfDirect() { return !!CF_BUILTIN_KEY; }
+  get cfBase() { return this.cfDirect ? CF : CF_PROXY; }
+  get cfEnabled() { return true; }
 
   cfHeaders() {
-    if (!this.cfKey) { const e = new Error(t('CurseForge non è ancora disponibile in CraftDock: arriverà con un prossimo aggiornamento. Nel frattempo usa Modrinth.')); e.code = 'CF_DISABLED'; throw e; }
-    return { 'x-api-key': this.cfKey, Accept: 'application/json' };
+    if (this.cfDirect) return { 'x-api-key': CF_BUILTIN_KEY, Accept: 'application/json' };
+    return { Accept: 'application/json', 'X-CraftDock': CRAFTDOCK_VERSION };
   }
 
   dir(server) { return path.join(server.dir, folderFor(server)); }
@@ -272,7 +277,7 @@ class ModManager {
       if (!ignoreVersion) params.set('gameVersion', server.mcVersion);
       if (CURSE_LOADER[server.type]) params.set('modLoaderType', CURSE_LOADER[server.type]);
     }
-    const r = await getJson(`${CF}/mods/search?${params}`, { headers: this.cfHeaders() });
+    const r = await getJson(`${this.cfBase}/mods/search?${params}`, { headers: this.cfHeaders() });
     return {
       total: r.pagination ? r.pagination.totalCount : r.data.length,
       hits: r.data.map((m) => ({
@@ -289,7 +294,7 @@ class ModManager {
       params.set('gameVersion', server.mcVersion);
       if (CURSE_LOADER[server.type]) params.set('modLoaderType', CURSE_LOADER[server.type]);
     }
-    const r = await getJson(`${CF}/mods/${modId}/files?${params}`, { headers: this.cfHeaders() });
+    const r = await getJson(`${this.cfBase}/mods/${modId}/files?${params}`, { headers: this.cfHeaders() });
     return r.data;
   }
 
@@ -301,14 +306,14 @@ class ModManager {
     const already = Object.entries(track).find(([, v]) => v.source === 'curseforge' && v.projectId === modId);
     if (already && !fileId && (await exists(path.join(this.dir(server), already[0])))) return [];
     let file;
-    if (fileId) file = (await getJson(`${CF}/mods/${modId}/files/${fileId}`, { headers: this.cfHeaders() })).data;
+    if (fileId) file = (await getJson(`${this.cfBase}/mods/${modId}/files/${fileId}`, { headers: this.cfHeaders() })).data;
     else {
       const files = await this.curseFiles(modId, server);
       file = files.find((f) => f.releaseType === 1) || files[0];
     }
     if (!file) throw new Error(t('Nessun file CurseForge compatibile con {mcVersion}', { mcVersion: server.mcVersion }));
     if (!file.downloadUrl) {
-      const mod = (await getJson(`${CF}/mods/${modId}`, { headers: this.cfHeaders() })).data;
+      const mod = (await getJson(`${this.cfBase}/mods/${modId}`, { headers: this.cfHeaders() })).data;
       const e = new Error(t('L\'autore di "{name}" non permette il download da app esterne. Scaricalo dal sito e trascinalo qui.', { name: mod.name }));
       e.url = mod.links && mod.links.websiteUrl;
       throw e;
@@ -375,7 +380,7 @@ class ModManager {
     } else {
       const ids = pack.files.filter((f) => f.required !== false).map((f) => f.fileID);
       onProgress && onProgress(null, t('Recupero l\'elenco delle mod da CurseForge…'));
-      const res = await postJson(`${CF}/mods/files`, { fileIds: ids }, { headers: this.cfHeaders() });
+      const res = await postJson(`${this.cfBase}/mods/files`, { fileIds: ids }, { headers: this.cfHeaders() });
       const files = res.data || [];
       const dir = path.join(server.dir, 'mods');
       let i = 0;

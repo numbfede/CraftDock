@@ -1,7 +1,7 @@
 # Crea installer e versione portatile per Windows e li pubblica nella pagina Releases.
 # Parte con il push di un tag v* oppure a mano da Actions → Release → Run workflow:
 # il tag viene creato in automatico dalla versione in package.json.
-# La chiave CurseForge, se presente, arriva dal secret CF_API_KEY e non finisce mai nel codice.
+# La chiave CurseForge non è nell'app: CurseForge passa dal server del sito (craftdock.numbfede.com/api/cf).
 # Firma del codice (facoltativa): se esiste il secret SIGNPATH_API_TOKEN gli .exe vengono firmati
 # con SignPath prima della pubblicazione. Istruzioni in docs/FIRMA-CODICE.md.
 name: Release
@@ -24,10 +24,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Build macOS (zip arm64 e x64, firma ad-hoc)
+      - name: Build macOS (dmg e zip arm64/x64, firma ad-hoc)
         run: npm run dist:mac
         env:
-          CF_API_KEY: ${{ secrets.CF_API_KEY }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
       - name: Aggiungi l'installazione guidata agli zip per macOS
         run: |
@@ -43,7 +42,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: craftdock-mac
-          path: dist/CraftDock-mac-*.zip
+          path: |
+            dist/CraftDock-mac-*.zip
+            dist/CraftDock-mac-*.dmg
 
   windows:
     needs: mac
@@ -65,7 +66,6 @@ jobs:
       - name: Build installer e portatile
         run: npm run dist
         env:
-          CF_API_KEY: ${{ secrets.CF_API_KEY }}
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
 
       - name: Carica gli exe da firmare
@@ -122,6 +122,8 @@ jobs:
           files: |
             dist/CraftDock-Setup.exe
             dist/CraftDock-Portable.exe
+            dist/CraftDock-mac-arm64.dmg
+            dist/CraftDock-mac-x64.dmg
             dist/CraftDock-mac-arm64.zip
             dist/CraftDock-mac-x64.zip
           body_path: release-notes.md

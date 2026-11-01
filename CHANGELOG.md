@@ -3,6 +3,16 @@
 Ogni versione ha le note in italiano e in inglese. Il workflow Release usa la sezione della
 versione in `package.json` come testo della release su GitHub, e il sito la mostra nella pagina Novità.
 
+## 1.3.1 (2026-11-01)
+
+### Italiano
+- **Installer per macOS (.dmg).** Si apre e si trascina CraftDock nella cartella Applicazioni, come le altre app per Mac.
+- **CurseForge passa dal server di CraftDock.** La chiave API non è più dentro l'app: le ricerche vanno al server del sito, che le inoltra a CurseForge.
+
+### English
+- **macOS installer (.dmg).** Open it and drag CraftDock to the Applications folder, like other Mac apps.
+- **CurseForge goes through the CraftDock server.** The API key is no longer inside the app: searches go to the website's server, which forwards them to CurseForge.
+
 ## 1.3.0 (2026-10-24)
 
 ### Italiano

@@ -1,12 +1,6 @@
 'use strict';
-// Chiave API CurseForge integrata nell'app.
-// NON va mai scritta qui né committata: il repository è pubblico.
-// Viene inserita solo al momento del build (npm run dist) da scripts/inject-cf-key.js,
-// leggendo la variabile d'ambiente CF_API_KEY, e finisce in cf-key.json (escluso da git).
-// Finché la chiave è vuota CurseForge resta disattivato nell'interfaccia.
-
-let key = '';
-try { key = require('./cf-key.json').key || ''; } catch (_) { /* nessuna chiave inserita */ }
-if (process.env.CF_API_KEY) key = process.env.CF_API_KEY;
-
-module.exports = String(key).trim();
+// CurseForge in CraftDock passa dal server del sito (craftdock.numbfede.com/api/cf), che aggiunge
+// la chiave API dal suo lato: la chiave non è mai dentro l'app né nel repository.
+// Solo per lo sviluppo si può usare una chiave propria con la variabile d'ambiente CF_API_KEY:
+// in quel caso l'app parla direttamente con api.curseforge.com.
+module.exports = String(process.env.CF_API_KEY || '').trim();

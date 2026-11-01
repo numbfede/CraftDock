@@ -561,7 +561,7 @@ function registerIpc() {
     return createFromPack(file, info, opts);
   });
   handle('pack:createFromCurse', async (modId, fileId, opts) => {
-    const f = (await getJson(`https://api.curseforge.com/v1/mods/${modId}/files/${fileId}`, { headers: mods.cfHeaders() })).data;
+    const f = (await getJson(`${mods.cfBase}/mods/${modId}/files/${fileId}`, { headers: mods.cfHeaders() })).data;
     if (!f.downloadUrl) throw new Error(t('Il download di questo modpack è bloccato per le app esterne: scaricalo dal sito e importa lo zip.'));
     const file = path.join(store.paths.cache, f.fileName);
     await withTask(t('Scarico il modpack'), (p) => require('./util').download(f.downloadUrl, file, { onProgress: (x) => p(x, t('Scarico {fileName}…', { fileName: f.fileName })) }));
