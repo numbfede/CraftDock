@@ -412,9 +412,11 @@ test('profili dei launcher: lettura, divisione delle mod e server con pacchetto 
   assert.strictEqual(classify({ environment: '*' }, null, 'iris-1.8.jar').side, 'client');
 
   const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), 'craftdock-prof-'));
-  const oldEnv = { APPDATA: process.env.APPDATA, HOME: process.env.HOME };
+  const oldEnv = { APPDATA: process.env.APPDATA, HOME: process.env.HOME, USERPROFILE: process.env.USERPROFILE };
   try {
+    // os.homedir() legge HOME su Linux/macOS e USERPROFILE su Windows
     process.env.HOME = path.join(tmp, 'home');
+    process.env.USERPROFILE = process.env.HOME;
     process.env.APPDATA = path.join(tmp, 'Roaming');
     const mkJar = async (file, meta) => {
       const d = path.join(tmp, 'b-' + path.basename(file));
@@ -475,8 +477,7 @@ test('profili dei launcher: lettura, divisione delle mod e server con pacchetto 
     assert.ok(entries.includes('overrides/mods/sodium.jar'));
     assert.ok(!entries.some((e) => /ledger/.test(e)));
   } finally {
-    process.env.HOME = oldEnv.HOME;
-    if (oldEnv.APPDATA === undefined) delete process.env.APPDATA; else process.env.APPDATA = oldEnv.APPDATA;
+    for (const [k, v] of Object.entries(oldEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
     await fsp.rm(tmp, { recursive: true, force: true });
   }
 });
